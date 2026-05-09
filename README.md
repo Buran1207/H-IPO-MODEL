@@ -1,21 +1,41 @@
-# HK IPO Decision Assistant — Step 1
+# HK IPO / 半新股决策驾驶舱
 
-这是第一阶段重构版：先把已有 CSV 数据做成可以给领导演示的港股 IPO / 半新股决策驾驶舱。
+这是港股 IPO / 半新股研究辅助系统的 Step 2 版本。
 
-## 部署方式
+## 已有功能
 
-1. 把本压缩包里的文件上传到你的 GitHub 仓库根目录。
-2. 覆盖原来的 `streamlit_app.py`、`requirements.txt`、`README.md`。
-3. 确认 `deploy_data/hk_ipo_scored_public.csv` 也在仓库里。
-4. Streamlit Community Cloud 会自动重新部署。
+- 投资池分层：A 高优先 / B 交易观察 / C 等触发 / D 回避
+- 路径归因：上市即强、深 V 反弹、升后回落、持续破发等
+- 单票 Memo：自动生成可下载的投资备忘录
+- 风控卖点：发行价、首日 VWAP、深 V 失败、放量滞涨等规则
+- 数据质量：显示发行价、行业、认购倍数、基石、保荐人等字段缺口
+- iFind 接入说明：本地取数 -> CSV -> 上传 GitHub -> 云端展示
 
-## 本版本新增
+## Streamlit Cloud 部署
 
-- 决策分层：A/B/C/D 观察池
-- 一级、二级、风控三个视角
-- 路径分布、行业统计、样本质量检查
-- 单票投资备忘录自动生成和下载
-- 数据缺口清单，为下一阶段接入 iFind 做准备
+主入口文件：
+
+```text
+streamlit_app.py
+```
+
+依赖文件：
+
+```text
+requirements.txt
+```
+
+公开数据文件路径：
+
+```text
+deploy_data/hk_ipo_scored_public.csv
+```
+
+可选补丁文件路径：
+
+```text
+deploy_data/ipo_master_patch.csv
+```
 
 ## 本地运行
 
@@ -24,6 +44,12 @@ pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## 下一阶段
+## 重要说明
 
-第二阶段应补齐发行结构和 IPO 认购数据，包括：公开发售倍数、国际配售倍数、一手中签率、回拨比例、基石比例、保荐人、上市市值、募资金额、发行价区间和最终定价位置。
+Streamlit Cloud 不能直接连接你本地电脑上的 iFind。正确架构是：
+
+```text
+本地 Windows 跑 iFind 脚本 -> 生成 CSV -> 上传 GitHub -> Streamlit Cloud 展示
+```
+
+下一阶段要补的字段：公开认购倍数、国际配售倍数、一手中签率、回拨比例、基石名单、基石占比、保荐人、发行市值、募资金额、行业。
