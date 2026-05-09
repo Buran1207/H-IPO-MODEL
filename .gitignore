@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+hkipo_ifind/local_credentials.py
+data/
+models/
+reports/
+.env
+.DS_Store
