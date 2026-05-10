@@ -1,0 +1,2 @@
+﻿code,name,listing_date,trade_date,day_offset,sample_bucket,open,high,low,close,volume,amount,turnover_rate,issue_price,ret_from_ipo,drawdown_from_high
+06610.HK,示例公司,2026-05-01,2026-05-01,0,D0-D10每日,10.0,11.0,9.5,10.8,1000000,10800000,0.05,10.0,0.08,0.0
