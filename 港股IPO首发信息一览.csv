@@ -1,0 +1,38 @@
+# iFind GUI 导出流程
+
+## 已接入
+
+当前脚本已经识别并接入：
+
+- 港股IPO首发信息一览
+- 港股IPO打新中签结果
+- 港股IPO基石投资者
+
+把这些文件放到：
+
+```text
+ifind_exports/
+```
+
+运行：
+
+```bash
+python scripts/ingest_ifind_gui_exports.py --input-dir ifind_exports --outdir deploy_data
+```
+
+## 下一批请导出的页面
+
+按优先级：
+
+1. 上市申请一览
+2. 首发中介机构 / 保荐人参与度
+3. IPO回拨统计
+4. 孖展数据
+5. IPO暗盘行情
+6. 上市后0-180天日行情
+
+## 注意
+
+- Streamlit Cloud 不能直接连你本地 iFind。
+- 正确流程是：本地 iFind 导出/更新 CSV → 运行脚本 → 上传 deploy_data 到 GitHub。
+- `ifind_exports/` 原始导出文件不建议上传公开仓库；`deploy_data/` 是网页使用的标准化文件。
