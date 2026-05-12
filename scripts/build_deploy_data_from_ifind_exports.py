@@ -7,7 +7,7 @@ from typing import Optional
 
 import pandas as pd
 
-NA_VALUES = {"--", "---", "", "nan", "NaN", "None", "null", "NULL", "不适用", "-"}
+NA_VALUES = {"--", "---", "", "nan", "NaN", "None", "null", "NULL", "不适用", "-", "　"}
 
 
 def read_csv_smart(path: str | Path) -> pd.DataFrame:
@@ -27,6 +27,9 @@ def clean_frame(df: pd.DataFrame) -> pd.DataFrame:
     for c in df.columns:
         df[c] = df[c].astype("string").str.strip()
         df[c] = df[c].replace(list(NA_VALUES), pd.NA)
+    # iFind 有些导出会把中文二级表头作为第一行重复出现，这里自动删掉。
+    if len(df) and any(str(x).strip() in {"代码", "序号", "同花顺代码"} for x in df.iloc[0].astype(str).tolist()[:5]):
+        df = df.iloc[1:].reset_index(drop=True)
     return df
 
 
@@ -34,6 +37,14 @@ def pick(df: pd.DataFrame, col: str, default=pd.NA) -> pd.Series:
     if col in df.columns:
         return df[col]
     return pd.Series([default] * len(df), index=df.index, dtype="object")
+
+
+def pick_first(df: pd.DataFrame, candidates: list[str], default=pd.NA) -> pd.Series:
+    out = pd.Series([default] * len(df), index=df.index, dtype="object")
+    for col in candidates:
+        if col in df.columns:
+            out = out.fillna(df[col])
+    return out
 
 
 def to_num(s: pd.Series) -> pd.Series:
@@ -57,23 +68,22 @@ def normalize_code(s: pd.Series) -> pd.Series:
         t = str(v).strip().upper()
         if not t:
             return pd.NA
+        t = t.replace(" ", "")
         if t.endswith(".HK"):
             base = t[:-3]
             if base.startswith("H"):
                 return f"{base}.HK"
-            if base.isdigit():
-                return f"{base.zfill(4)}.HK"
+            digits = re.sub(r"\D", "", base)
+            if digits:
+                return f"{digits.zfill(4)}.HK"
             return t
+        if t.startswith("H") and t[1:].isdigit():
+            return f"{t}.HK"
+        digits = re.sub(r"\D", "", t)
+        if digits:
+            return f"{digits.zfill(4)}.HK"
         return t
     return s.map(one)
-
-
-def first_numeric(*series: pd.Series) -> pd.Series:
-    out = pd.Series([pd.NA] * len(series[0]), index=series[0].index, dtype="Float64")
-    for s in series:
-        n = to_num(s)
-        out = out.fillna(n)
-    return out
 
 
 def normalize_master(df: pd.DataFrame) -> pd.DataFrame:
@@ -90,7 +100,6 @@ def normalize_master(df: pd.DataFrame) -> pd.DataFrame:
     out["board"] = pick(df, "p05310_f053")
     out["offering_type"] = pick(df, "p05310_f004")
     out["is_latest"] = pick(df, "p05310_f054")
-    # 根据样本字段位置：f009/f008通常为招股价区间，f010常为最终价/定价；若尚未定价则为空。
     out["offer_price_low"] = to_num(pick(df, "p05310_f009"))
     out["offer_price_high"] = to_num(pick(df, "p05310_f008"))
     out["issue_price"] = to_num(pick(df, "p05310_f010"))
@@ -108,6 +117,35 @@ def normalize_master(df: pd.DataFrame) -> pd.DataFrame:
     out["valuation_metric"] = to_num(pick(df, "p05310_f050"))
     out["source_table"] = "首发信息一览"
     out = out.dropna(how="all")
+    out = out[out["code"].notna() | out["name"].notna()]
+    return out
+
+
+def normalize_listing_application(df: pd.DataFrame) -> pd.DataFrame:
+    df = clean_frame(df)
+    out = pd.DataFrame(index=df.index)
+    out["code"] = normalize_code(pick_first(df, ["p04920_f001", "同花顺代码", "代码"]))
+    out["temp_code"] = out["code"]
+    out["name"] = pick_first(df, ["p04920_f002", "证券简称", "名称", "发行人"])
+    out["application_date"] = to_date(pick_first(df, ["p04920_f003", "申请日期"]))
+    out["application_status"] = pick_first(df, ["p04920_f004", "申请状态"])
+    out["status_update_date"] = to_date(pick_first(df, ["p04920_f005", "申请状态更新日期"]))
+    out["hearing_date"] = to_date(pick_first(df, ["p04920_f006", "通过聆讯日期"]))
+    out["listing_date"] = to_date(pick_first(df, ["p04920_f037", "上市日期"]))
+    out["first_application_date"] = to_date(pick_first(df, ["p04920_f007", "首次申请日期"]))
+    out["board"] = pick_first(df, ["p04920_f008", "拟上市板块"])
+    out["sponsor"] = pick_first(df, ["p04920_f042", "保荐人"])
+    out["overall_coordinator"] = pick_first(df, ["p04920_f011", "整体协调人"])
+    out["company_chinese_name"] = pick_first(df, ["p04920_f021", "公司中文名"])
+    out["company_english_name"] = pick_first(df, ["p04920_f022", "公司英文名"])
+    out["website"] = pick_first(df, ["p04920_f026", "网址"])
+    out["fiscal_year_end"] = pick_first(df, ["p04920_f030", "财政年度截止"])
+    out["business_scope"] = pick_first(df, ["p04920_f032", "经营范围"])
+    out["company_profile"] = pick_first(df, ["p04920_f033", "公司简介"])
+    # 上市申请导出中 p04920_f034 通常是行业名称；p04920_f038 更像内部ID，不作为行业展示。
+    out["industry_level_1"] = pick_first(df, ["p04920_f034", "行业", "一级行业"])
+    out["industry_level_2"] = pick_first(df, ["p04920_f039", "二级行业"])
+    out["source_table"] = "上市申请一览"
     out = out[out["code"].notna() | out["name"].notna()]
     return out
 
@@ -155,8 +193,7 @@ def normalize_cornerstone(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
         summary = pd.DataFrame(columns=["code", "cornerstone_count", "cornerstone_amount_hkd", "cornerstone_top_names", "cornerstone_quality_score"])
     else:
         def top_names(s: pd.Series) -> str:
-            vals = [str(x) for x in s.dropna().unique().tolist()[:5]]
-            return "；".join(vals)
+            return "；".join([str(x) for x in s.dropna().unique().tolist()[:5]])
         def quality(names: pd.Series) -> float:
             text = " ".join(names.dropna().astype(str).tolist()).lower()
             score = 50.0
@@ -189,6 +226,36 @@ def normalize_margin(df: pd.DataFrame) -> pd.DataFrame:
     out["margin_over_text"] = pick(df, "p05551_f007")
     out["currency"] = pick(df, "p05551_f008")
     out["source_table"] = "孖展数据"
+    out = out[out["code"].notna() | out["name"].notna()]
+    return out
+
+
+def normalize_dark_pool(df: pd.DataFrame) -> pd.DataFrame:
+    df = clean_frame(df)
+    out = pd.DataFrame(index=df.index)
+    out["code"] = normalize_code(pick_first(df, ["代码", "stock_code"]))
+    out["name"] = pick_first(df, ["名称", "name"])
+    out["allotment_date"] = to_date(pick_first(df, ["中签公布日期"]))
+    out["gray_date"] = to_date(pick_first(df, ["暗盘日期"]))
+    out["listing_date"] = to_date(pick_first(df, ["上市日期"]))
+    out["issue_price"] = to_num(pick_first(df, ["发行价格"]))
+    out["gray_open"] = to_num(pick_first(df, ["暗盘行情"]))
+    out["gray_open_ret_pct"] = to_num(pick_first(df, ["暗盘行情.1"]))
+    out["gray_close"] = to_num(pick_first(df, ["暗盘行情.2"]))
+    out["gray_close_ret_pct"] = to_num(pick_first(df, ["暗盘行情.3"]))
+    out["gray_high"] = to_num(pick_first(df, ["暗盘行情.4"]))
+    out["gray_low"] = to_num(pick_first(df, ["暗盘行情.5"]))
+    out["gray_avg"] = to_num(pick_first(df, ["暗盘行情.6"]))
+    out["gray_trade_count"] = to_num(pick_first(df, ["暗盘行情.7"]))
+    out["gray_volume_10k_shares"] = to_num(pick_first(df, ["暗盘行情.8"]))
+    out["gray_amount_10k_hkd"] = to_num(pick_first(df, ["暗盘行情.9"]))
+    out["d1_open"] = to_num(pick_first(df, ["首日行情"]))
+    out["d1_open_ret_pct"] = to_num(pick_first(df, ["首日行情.1"]))
+    out["d1_close"] = to_num(pick_first(df, ["首日行情.2"]))
+    out["d1_close_ret_pct"] = to_num(pick_first(df, ["首日行情.3"]))
+    out["d1_avg"] = to_num(pick_first(df, ["首日行情.4"]))
+    out["currency"] = pick_first(df, ["交易货币"])
+    out["source_table"] = "IPO暗盘行情"
     out = out[out["code"].notna() | out["name"].notna()]
     return out
 
@@ -238,78 +305,141 @@ def find_file(input_dir: Path, keywords: list[str]) -> Optional[Path]:
     return None
 
 
+
+def coalesce_suffix_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Merge pandas _x/_y columns back into canonical names after left joins."""
+    df = df.copy()
+    bases = sorted({c[:-2] for c in df.columns if c.endswith('_x') or c.endswith('_y')})
+    for b in bases:
+        cols = [c for c in [b, f'{b}_x', f'{b}_y'] if c in df.columns]
+        if not cols:
+            continue
+        out = df[cols[0]]
+        for c in cols[1:]:
+            out = out.fillna(df[c])
+        df[b] = out
+        for c in cols:
+            if c != b and c in df.columns:
+                df = df.drop(columns=[c])
+    return df
+
+def merge_first(pool: pd.DataFrame, addon: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    keep = [c for c in cols if c in addon.columns]
+    if not keep or "code" not in addon.columns:
+        return pool
+    return pool.merge(addon[keep].drop_duplicates("code"), on="code", how="left")
+
+
 def build(input_dir: str | Path, outdir: str | Path) -> None:
     input_dir = Path(input_dir)
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    inventory = []
+    inventory: list[list[object]] = []
 
     paths = {
+        "application": find_file(input_dir, ["上市申请"]),
         "master": find_file(input_dir, ["首发信息"]),
         "ballot": find_file(input_dir, ["打新", "中签"]),
         "cornerstone": find_file(input_dir, ["基石"]),
         "margin": find_file(input_dir, ["孖展"]),
+        "dark": find_file(input_dir, ["暗盘"]),
         "underwriters": find_file(input_dir, ["承销团"]),
         "bookrunners": find_file(input_dir, ["账簿管理"]),
     }
 
-    master = pd.DataFrame()
-    ballot = pd.DataFrame()
-    cornerstone = pd.DataFrame()
-    cs_summary = pd.DataFrame()
-    margin = pd.DataFrame()
-    underwriters = pd.DataFrame()
-    bookrunners = pd.DataFrame()
+    app = master = ballot = cornerstone = cs_summary = margin = dark = underwriters = bookrunners = pd.DataFrame()
+
+    if paths["application"]:
+        raw = read_csv_smart(paths["application"])
+        app = normalize_listing_application(raw)
+        write_csv(app, outdir / "ipo_listing_applications.csv")
+        inventory.append(["上市申请一览", paths["application"].name, len(raw), len(app), "已接入"])
 
     if paths["master"]:
         raw = read_csv_smart(paths["master"])
         master = normalize_master(raw)
         write_csv(master, outdir / "ipo_master_ifind_normalized.csv")
-        inventory.append(["首发信息一览", str(paths["master"].name), len(raw), len(master), "已接入"])
+        inventory.append(["首发信息一览", paths["master"].name, len(raw), len(master), "已接入"])
 
     if paths["ballot"]:
         raw = read_csv_smart(paths["ballot"])
         ballot = normalize_ballot(raw)
         write_csv(ballot, outdir / "ipo_ballot_results.csv")
-        inventory.append(["IPO打新中签结果", str(paths["ballot"].name), len(raw), len(ballot), "已接入"])
+        inventory.append(["IPO打新中签结果", paths["ballot"].name, len(raw), len(ballot), "已接入"])
 
     if paths["cornerstone"]:
         raw = read_csv_smart(paths["cornerstone"])
         cornerstone, cs_summary = normalize_cornerstone(raw)
         write_csv(cornerstone, outdir / "ipo_cornerstone_investors.csv")
         write_csv(cs_summary, outdir / "ipo_cornerstone_summary.csv")
-        inventory.append(["基石投资者", str(paths["cornerstone"].name), len(raw), len(cornerstone), "已接入"])
+        inventory.append(["基石投资者", paths["cornerstone"].name, len(raw), len(cornerstone), "已接入"])
 
     if paths["margin"]:
         raw = read_csv_smart(paths["margin"])
         margin = normalize_margin(raw)
         write_csv(margin, outdir / "ipo_margin_data.csv")
-        inventory.append(["孖展数据", str(paths["margin"].name), len(raw), len(margin), "已接入"])
+        inventory.append(["孖展数据", paths["margin"].name, len(raw), len(margin), "已接入"])
+
+    if paths["dark"]:
+        raw = read_csv_smart(paths["dark"])
+        dark = normalize_dark_pool(raw)
+        write_csv(dark, outdir / "ipo_dark_pool.csv")
+        inventory.append(["IPO暗盘行情", paths["dark"].name, len(raw), len(dark), "已接入"])
 
     if paths["underwriters"]:
         raw = read_csv_smart(paths["underwriters"])
         underwriters = normalize_underwriters(raw)
         write_csv(underwriters, outdir / "ipo_underwriter_participation.csv")
-        inventory.append(["承销团参与度", str(paths["underwriters"].name), len(raw), len(underwriters), "已接入"])
+        inventory.append(["承销团参与度", paths["underwriters"].name, len(raw), len(underwriters), "已接入"])
 
     if paths["bookrunners"]:
         raw = read_csv_smart(paths["bookrunners"])
         bookrunners = normalize_bookrunners(raw)
         write_csv(bookrunners, outdir / "ipo_bookrunner_details.csv")
-        inventory.append(["账簿管理人", str(paths["bookrunners"].name), len(raw), len(bookrunners), "已接入"])
+        inventory.append(["账簿管理人", paths["bookrunners"].name, len(raw), len(bookrunners), "已接入"])
 
-    # App主表：以首发信息为骨架，合并中签、基石、孖展和中介机构。
+    # 主表：先用首发信息，再追加上市申请中但还没进入首发信息的临时代码公司。
     if not master.empty:
         pool = master.copy()
+    elif not app.empty:
+        pool = pd.DataFrame(columns=["code", "name"])
+    else:
+        pool = pd.DataFrame()
+
+    if not app.empty:
+        app_pool = app.copy()
+        app_pool["lifecycle_stage"] = "A1/上市申请中"
+        if not pool.empty:
+            missing = app_pool[~app_pool["code"].astype(str).isin(pool["code"].astype(str))]
+            # 补齐首发主表中没有的字段。
+            for c in pool.columns:
+                if c not in missing.columns:
+                    missing[c] = pd.NA
+            for c in missing.columns:
+                if c not in pool.columns:
+                    pool[c] = pd.NA
+            pool = pd.concat([pool, missing[pool.columns]], ignore_index=True)
+        else:
+            pool = app_pool
+        # 上市申请字段合并到主表。
+        merge_cols = ["code", "temp_code", "application_date", "application_status", "status_update_date", "hearing_date", "first_application_date", "sponsor", "overall_coordinator", "business_scope", "company_profile", "industry_level_1", "industry_level_2"]
+        pool = merge_first(pool, app[merge_cols], merge_cols)
+        pool = coalesce_suffix_columns(pool)
+
+    if not pool.empty:
         if not ballot.empty:
             keep = ["code", "public_subscription_multiple_ballot", "one_lot_success_rate_pct", "industry_level_1", "industry_level_2", "total_applicants"]
-            pool = pool.merge(ballot[[c for c in keep if c in ballot.columns]].drop_duplicates("code"), on="code", how="left")
-            pool["public_subscription_multiple"] = pool["public_subscription_multiple"].fillna(pool.get("public_subscription_multiple_ballot"))
+            pool = merge_first(pool, ballot, keep)
+            if "public_subscription_multiple" in pool.columns and "public_subscription_multiple_ballot" in pool.columns:
+                pool["public_subscription_multiple"] = pd.to_numeric(pool["public_subscription_multiple"], errors="coerce").fillna(pd.to_numeric(pool["public_subscription_multiple_ballot"], errors="coerce"))
         if not cs_summary.empty:
             pool = pool.merge(cs_summary, on="code", how="left", suffixes=("", "_cs"))
         if not margin.empty:
             mg = margin.sort_values("record_date").groupby("code", as_index=False).tail(1)
             pool = pool.merge(mg[["code", "record_date", "margin_amount_hkd", "margin_multiple", "margin_over_text"]], on="code", how="left")
+        if not dark.empty:
+            dk_cols = ["code", "gray_date", "gray_open_ret_pct", "gray_close_ret_pct", "gray_amount_10k_hkd", "d1_open_ret_pct", "d1_close_ret_pct"]
+            pool = pool.merge(dark[[c for c in dk_cols if c in dark.columns]].drop_duplicates("code"), on="code", how="left")
         if not underwriters.empty:
             uw = underwriters.groupby("code").agg(
                 underwriter_count=("institution", "nunique"),
@@ -323,13 +453,14 @@ def build(input_dir: str | Path, outdir: str | Path) -> None:
             ).reset_index()
             pool = pool.merge(br, on="code", how="left")
 
+        pool = coalesce_suffix_columns(pool)
         today = pd.Timestamp.today().normalize()
-        ld = pd.to_datetime(pool["listing_date"], errors="coerce")
-        pool["lifecycle_stage"] = "已上市/半新股"
-        pool.loc[ld.isna(), "lifecycle_stage"] = "待补上市日"
-        pool.loc[ld > today, "lifecycle_stage"] = "招股/待上市"
+        ld = pd.to_datetime(pool.get("listing_date"), errors="coerce")
+        pool["lifecycle_stage"] = pool.get("lifecycle_stage", pd.Series([pd.NA] * len(pool))).fillna("已上市/半新股")
+        pool.loc[ld.isna() & pool.get("application_status", pd.Series([pd.NA] * len(pool))).notna(), "lifecycle_stage"] = "A1/上市申请中"
+        pool.loc[ld.notna() & (ld > today), "lifecycle_stage"] = "招股/待上市"
+        pool.loc[ld.notna() & (ld <= today), "lifecycle_stage"] = "已上市/半新股"
 
-        # 简化评分：只作为预筛辅助，不替代投委会判断。
         sub = pd.to_numeric(pool.get("public_subscription_multiple"), errors="coerce")
         one = pd.to_numeric(pool.get("one_lot_success_rate_pct"), errors="coerce")
         margin_mult = pd.to_numeric(pool.get("margin_multiple"), errors="coerce")
@@ -338,19 +469,27 @@ def build(input_dir: str | Path, outdir: str | Path) -> None:
         book_count = pd.to_numeric(pool.get("bookrunner_count"), errors="coerce")
         under_count = pd.to_numeric(pool.get("underwriter_count"), errors="coerce")
         inter_mult = pd.to_numeric(pool.get("international_subscription_multiple"), errors="coerce")
+        gray_ret = pd.to_numeric(pool.get("gray_close_ret_pct"), errors="coerce")
+        d1_ret = pd.to_numeric(pool.get("d1_close_ret_pct"), errors="coerce")
 
-        score = pd.Series(45.0, index=pool.index)
-        score += sub.clip(0, 2000).fillna(0) / 2000 * 18
-        score += margin_mult.clip(0, 1000).fillna(0) / 1000 * 10
-        score += inter_mult.clip(0, 30).fillna(0) / 30 * 12
-        score += cs_quality.fillna(50).sub(50).clip(0, 45) / 45 * 12
-        score += cs_count.clip(0, 8).fillna(0) / 8 * 6
+        score = pd.Series(42.0, index=pool.index)
+        score += sub.clip(0, 2000).fillna(0) / 2000 * 16
+        score += margin_mult.clip(0, 1000).fillna(0) / 1000 * 8
+        score += inter_mult.clip(0, 30).fillna(0) / 30 * 10
+        score += cs_quality.fillna(50).sub(50).clip(0, 45) / 45 * 10
+        score += cs_count.clip(0, 8).fillna(0) / 8 * 5
         score += book_count.clip(0, 8).fillna(0) / 8 * 4
-        score += under_count.clip(0, 12).fillna(0) / 12 * 4
-        score -= one.fillna(20).rsub(20).clip(0, 20) / 20 * 3  # 极低中签率提示拥挤，但不大幅扣分
+        score += under_count.clip(0, 12).fillna(0) / 12 * 3
+        score += gray_ret.clip(-20, 80).fillna(0) / 80 * 8
+        score += d1_ret.clip(-20, 80).fillna(0) / 80 * 5
+        score -= one.fillna(20).rsub(20).clip(0, 20) / 20 * 3
+        # A1阶段数据少，分数只代表预筛，不与已定价IPO完全可比。
+        score = score.where(pool["lifecycle_stage"].ne("A1/上市申请中"), score.clip(0, 65))
         pool["pre_listing_score"] = score.clip(0, 100).round(1)
 
-        def tier(x: float) -> str:
+        def tier(x: float, stage: str) -> str:
+            if stage == "A1/上市申请中":
+                return "A1 预研"
             if pd.isna(x):
                 return "C 等待补数据"
             if x >= 75:
@@ -360,11 +499,13 @@ def build(input_dir: str | Path, outdir: str | Path) -> None:
             if x >= 50:
                 return "C 等待触发"
             return "D 回避/仅跟踪"
-        pool["decision_tier"] = pool["pre_listing_score"].map(tier)
+        pool["decision_tier"] = [tier(x, stg) for x, stg in zip(pool["pre_listing_score"], pool["lifecycle_stage"])]
 
         def rec(row) -> str:
             stg = row.get("lifecycle_stage", "")
             tier_ = row.get("decision_tier", "")
+            if stg == "A1/上市申请中":
+                return "建立预研档案；重点看行业景气、A/H估值锚、保荐人质量，等待聆讯与招股结构。"
             if "A" in tier_:
                 return "一级重点研究；若估值与配售结构合理，可争取额度/锚定，并准备二级回踩买点。"
             if "B" in tier_:
@@ -376,6 +517,8 @@ def build(input_dir: str | Path, outdir: str | Path) -> None:
 
         def tags(row) -> str:
             res = []
+            if row.get("lifecycle_stage") == "A1/上市申请中":
+                res.append("A1预研")
             if pd.notna(row.get("public_subscription_multiple")) and row.get("public_subscription_multiple") >= 1000:
                 res.append("公开超购极热")
             if pd.notna(row.get("margin_multiple")) and row.get("margin_multiple") >= 500:
@@ -384,6 +527,10 @@ def build(input_dir: str | Path, outdir: str | Path) -> None:
                 res.append("一手中签率低")
             if pd.notna(row.get("cornerstone_count")) and row.get("cornerstone_count") >= 5:
                 res.append("基石阵容较多")
+            if pd.notna(row.get("gray_close_ret_pct")) and row.get("gray_close_ret_pct") < 0:
+                res.append("暗盘转弱")
+            if pd.notna(row.get("gray_close_ret_pct")) and row.get("gray_close_ret_pct") >= 30:
+                res.append("暗盘强势")
             if not res:
                 res.append("等待更多结构数据")
             return "；".join(res)
@@ -391,10 +538,11 @@ def build(input_dir: str | Path, outdir: str | Path) -> None:
         write_csv(pool, outdir / "ipo_decision_pool.csv")
 
         # 兼容旧版App的A1表/offer表。
-        a1 = pool[["code", "name", "listing_date", "prospectus_date", "board", "lifecycle_stage", "decision_tier", "pre_listing_score", "model_recommendation", "risk_tags"]].copy()
+        a1_cols = ["code", "temp_code", "name", "application_date", "application_status", "hearing_date", "listing_date", "prospectus_date", "board", "sponsor", "overall_coordinator", "lifecycle_stage", "decision_tier", "pre_listing_score", "model_recommendation", "risk_tags", "business_scope", "company_profile"]
+        a1 = pool[[c for c in a1_cols if c in pool.columns]].copy()
         a1 = a1.rename(columns={"code": "stock_code", "name": "issuer_name"})
         write_csv(a1, outdir / "a1_ipo_pipeline.csv")
-        offer_cols = ["code", "name", "listing_date", "issue_price", "offer_price_low", "offer_price_high", "public_subscription_multiple", "international_subscription_multiple", "one_lot_success_rate_pct", "cornerstone_count", "cornerstone_amount_hkd", "margin_multiple", "decision_tier", "pre_listing_score"]
+        offer_cols = ["code", "name", "listing_date", "issue_price", "offer_price_low", "offer_price_high", "public_subscription_multiple", "international_subscription_multiple", "one_lot_success_rate_pct", "cornerstone_count", "cornerstone_amount_hkd", "margin_multiple", "gray_close_ret_pct", "d1_close_ret_pct", "decision_tier", "pre_listing_score"]
         write_csv(pool[[c for c in offer_cols if c in pool.columns]], outdir / "ipo_offer_results.csv")
 
     # 数据完整度
@@ -403,7 +551,7 @@ def build(input_dir: str | Path, outdir: str | Path) -> None:
     ]
     inv = pd.DataFrame(inventory, columns=["source_name", "file_name", "raw_rows", "normalized_rows", "status"])
     for e in expected:
-        if not inv["source_name"].str.contains(e.split("/")[0], na=False).any():
+        if inv.empty or not inv["source_name"].str.contains(e.split("/")[0], na=False).any():
             inv.loc[len(inv)] = [e, "", 0, 0, "未接入"]
     write_csv(inv, outdir / "data_inventory.csv")
     print(f"Done. Output dir: {outdir}")
