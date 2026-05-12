@@ -1,0 +1,7 @@
+﻿code,name,listing_date,reason,errors
+0699.HK,均胜电子,2025-11-06,all sources failed,"yahoo: Yahoo returned no timestamps | stooq: Error tokenizing data. C error: Expected 1 fields in line 6, saw 2
+"
+0638.HK,广和通,2025-10-22,all sources failed,"yahoo: Yahoo returned no timestamps | stooq: Error tokenizing data. C error: Expected 1 fields in line 6, saw 2
+"
+0917.HK,趣致集团,2024-05-27,all sources failed,"yahoo: 400 Client Error: Bad Request for url: https://query1.finance.yahoo.com/v8/finance/chart/0917.HK?period1=1716768000&period2=1732406400&interval=1d&events=history&includeAdjustedClose=true | stooq: Error tokenizing data. C error: Expected 1 fields in line 6, saw 2
+"
