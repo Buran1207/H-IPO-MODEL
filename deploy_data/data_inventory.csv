@@ -9,6 +9,8 @@ IPO暗盘行情,港股IPO暗盘行情.csv,233,230,已接入
 账簿管理人,港股IPO账簿管理人-明细.xlsx.csv,114,112,已接入
 IPO回拨统计,,0,0,未接入
 首发中介机构/承销团,,0,0,未接入
-上市后0-180D行情,ipo_daily_quotes_180d.csv,23576,23576,已接入
-上市后路径标签,ipo_post_listing_paths.csv,234,234,已接入
-Step7决策评分,ipo_decision_scored_step7.csv,2668,2668,已接入
+上市后0-180D行情,,0,0,未接入
+Step8决策评分,ipo_decision_scored_step8.csv,2668,2668,已接入
+Step8分层回测,step8_backtest_score_buckets.csv,4,4,已接入
+Step8因子诊断,step8_factor_diagnostics.csv,9,9,已接入
+Step8权重方案表现,step8_weight_profile_performance.csv,4,4,已接入

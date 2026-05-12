@@ -1,65 +1,66 @@
-# 港股 IPO / 半新股决策驾驶舱 · Step 7
+# 港股 IPO / 半新股决策驾驶舱 · Step 8
 
-这是 Step 7 决策评分版，已接入：
-
-- 上市申请 / A1 临时代码池
-- 首发信息一览
-- 打新中签结果
-- 基石投资者
-- 孖展数据
-- 承销团参与度
-- 账簿管理人
-- IPO 暗盘行情
-- 免费上市后 0-180D 日行情
-- 上市后路径标签
-
-## 在线部署
-
-在 Streamlit Community Cloud 中选择本仓库，入口文件填：
-
-```text
-streamlit_app.py
-```
+本版本在 Step 7 的基础上增加：因子拆解、权重方案、分层回测、买卖触发器和单票 Step 8 Memo。
 
 ## 本地运行
 
-```bash
+```powershell
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## 每次更新数据后的本地流程
+## 更新数据流程
 
-### 1. 从免费源抓上市后0-180D行情
+### 1. iFind 导出结构化表
 
-```bash
+将 iFind 导出的 CSV/XLSX 放入：
+
+```text
+ifind_exports/
+```
+
+然后运行：
+
+```powershell
+python scripts/build_deploy_data_from_ifind_exports.py
+```
+
+### 2. 抓免费上市后 0-180D 行情
+
+```powershell
 python scripts/fetch_free_hk_quotes_180d.py --pool deploy_data/ipo_decision_pool.csv --out deploy_data/ipo_daily_quotes_180d.csv
 python scripts/build_post_listing_paths.py --update-pool
 ```
 
-### 2. 重新生成 Step 7 决策评分
+### 3. 跑 Step 8 评分和回测
 
-```bash
-python scripts/score_decisions.py
+```powershell
+python scripts/score_step8_model_lab.py
 ```
 
-生成文件：
+生成：
 
 ```text
-deploy_data/ipo_decision_scored_step7.csv
+deploy_data/ipo_decision_scored_step8.csv
+deploy_data/step8_backtest_score_buckets.csv
+deploy_data/step8_weight_profile_performance.csv
+deploy_data/step8_factor_diagnostics.csv
+deploy_data/step8_watchlist_actions.csv
 ```
 
-### 3. 上传 GitHub
+## Step 8 页面
 
-上传或覆盖 `deploy_data/` 里的 CSV 文件，Streamlit Cloud 会自动刷新。
+1. 决策池：综合排序、一级/基石/二级建议、买卖触发器。
+2. 权重与回测：不同权重方案的历史分层表现。
+3. 因子诊断：每个因子的区分度和相关性。
+4. 交易状态机：上市后 0-180D 路径、买点和卖点。
+5. 风险预警：孖展拥挤、破发、行情缺失、锁定期等风险。
+6. 单票 Memo：下载可汇报的 Markdown 投资备忘录。
+7. 数据完整度：检查数据源是否接入。
+8. 更新说明：日常更新步骤。
 
-## 评分说明
+## 注意
 
-当前模型是规则评分模型，不是实盘交易系统。它用于辅助判断：
-
-- 一级是否参与
-- 基石/锚定是否可谈
-- 暗盘/首日是否追或卖
-- 上市后是否等深 V、站回发行价、趋势确认或止损
-
-后续可以在积累更多历史样本后，把规则评分升级为 LightGBM / CatBoost 模型。
+- A 高优先不等于直接买入，而是进入重点研究和额度准备。
+- `partial` 表示上市不足 180 天或免费行情源数据不完整，不等于未接入。
+- 模型不接实盘，只做研究和决策辅助。

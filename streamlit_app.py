@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 from datetime import datetime
-import pandas as pd
+import json
 import numpy as np
+import pandas as pd
 import streamlit as st
 
 BASE = Path("deploy_data")
+CONFIG = Path("config/step8_weight_profiles.json")
 
-st.set_page_config(page_title="港股 IPO 决策驾驶舱 Step 7", layout="wide")
+st.set_page_config(page_title="港股 IPO 决策驾驶舱 Step 8", layout="wide")
 
 
 def read_csv_any(path: Path) -> pd.DataFrame:
@@ -22,19 +24,35 @@ def read_csv_any(path: Path) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
+def to_num(s):
+    return pd.to_numeric(s, errors="coerce")
+
+
 @st.cache_data(show_spinner=False)
 def load_all():
-    scored = read_csv_any(BASE / "ipo_decision_scored_step7.csv")
+    scored = read_csv_any(BASE / "ipo_decision_scored_step8.csv")
+    if scored.empty:
+        scored = read_csv_any(BASE / "ipo_decision_scored_step7.csv")
     if scored.empty:
         scored = read_csv_any(BASE / "ipo_decision_pool.csv")
     paths = read_csv_any(BASE / "ipo_post_listing_paths.csv")
     quotes = read_csv_any(BASE / "ipo_daily_quotes_180d.csv")
-    inventory = read_csv_any(BASE / "data_inventory.csv")
-    for df in (scored, paths, quotes):
-        for c in ["listing_date", "date", "application_date", "first_application_date", "hearing_date", "lockup_end_date"]:
+    inv = read_csv_any(BASE / "data_inventory.csv")
+    buckets = read_csv_any(BASE / "step8_backtest_score_buckets.csv")
+    profiles = read_csv_any(BASE / "step8_weight_profile_performance.csv")
+    diag = read_csv_any(BASE / "step8_factor_diagnostics.csv")
+    watch = read_csv_any(BASE / "step8_watchlist_actions.csv")
+    for df in (scored, paths, quotes, watch):
+        for c in ["listing_date", "date", "application_date", "first_application_date", "hearing_date", "lockup_end_date", "prospectus_date", "gray_date"]:
             if c in df.columns:
                 df[c] = pd.to_datetime(df[c], errors="coerce")
-    return scored, paths, quotes, inventory
+    weight_profiles = {}
+    if CONFIG.exists():
+        try:
+            weight_profiles = json.loads(CONFIG.read_text(encoding="utf-8"))
+        except Exception:
+            weight_profiles = {}
+    return scored, paths, quotes, inv, buckets, profiles, diag, watch, weight_profiles
 
 
 def fmt_pct(x):
@@ -71,7 +89,18 @@ def fmt_money(x):
         return str(x)
 
 
-def pct_cols(df, cols):
+def show_df(df: pd.DataFrame, cols=None, height=520):
+    if df.empty:
+        st.info("暂无数据")
+        return
+    out = df.copy()
+    if cols:
+        cols = [c for c in cols if c in out.columns]
+        out = out[cols]
+    st.dataframe(out, use_container_width=True, hide_index=True, height=height)
+
+
+def pct_view(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     out = df.copy()
     for c in cols:
         if c in out.columns:
@@ -79,25 +108,9 @@ def pct_cols(df, cols):
     return out
 
 
-def show_df(df: pd.DataFrame, cols=None, height=520):
-    if df.empty:
-        st.info("暂无数据")
-        return
-    if cols:
-        cols = [c for c in cols if c in df.columns]
-        df = df[cols]
-    st.dataframe(df, use_container_width=True, hide_index=True, height=height)
-
-
 def download_csv_button(df: pd.DataFrame, name: str, label="下载当前表"):
-    if df.empty:
-        return
-    st.download_button(
-        label,
-        data=df.to_csv(index=False, encoding="utf-8-sig"),
-        file_name=name,
-        mime="text/csv",
-    )
+    if not df.empty:
+        st.download_button(label, df.to_csv(index=False, encoding="utf-8-sig"), file_name=name, mime="text/csv")
 
 
 def make_memo(row: pd.Series) -> str:
@@ -108,22 +121,36 @@ def make_memo(row: pd.Series) -> str:
         if isinstance(v, pd.Timestamp):
             return v.strftime("%Y-%m-%d")
         return v
-    memo = f"""# 港股 IPO / 半新股投资备忘录：{g('code')} {g('name')}
+    return f"""# 港股 IPO / 半新股投资备忘录：{g('code')} {g('name')}
 
 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-## 一、模型结论
+## 1. Step 8 模型结论
 
-- 综合分：{g('ipo_decision_score')}
-- 决策层：{g('decision_tier_step7', g('decision_tier'))}
-- 一级建议：{g('primary_recommendation')}
-- 基石/锚定建议：{g('cornerstone_recommendation')}
-- 二级建议：{g('secondary_recommendation')}
-- 卖点/风控：{g('sell_risk_recommendation')}
+- 综合分：{g('step8_score')}
+- 决策层：{g('decision_tier_step8')}
+- 阶段动作：{g('stage_action_step8')}
+- 一级建议：{g('primary_recommendation_step8')}
+- 基石/锚定建议：{g('cornerstone_recommendation_step8')}
+- 二级建议：{g('secondary_recommendation_step8')}
+- 买入触发：{g('buy_trigger_step8')}
+- 卖点/风控：{g('sell_trigger_step8')}
 
-## 二、发行结构
+## 2. 分项评分
+
+- 一级分：{g('primary_score_step8')}
+- 基石分：{g('cornerstone_score_step8')}
+- 二级分：{g('secondary_score_step8')}
+- 发行热度分：{g('issue_heat_score')}
+- 定价安全分：{g('pricing_safety_score')}
+- 暗盘/首日分：{g('gray_signal_score')}
+- 0-180D路径分：{g('post_listing_score')}
+- 风险惩罚：{g('risk_penalty_score')}
+
+## 3. 发行结构
 
 - 生命周期阶段：{g('lifecycle_stage')}
+- 申请状态：{g('application_status')}
 - 上市日：{g('listing_date')}
 - 发行价：{g('issue_price')}
 - 招股价区间：{g('offer_price_low')} - {g('offer_price_high')}
@@ -132,7 +159,7 @@ def make_memo(row: pd.Series) -> str:
 - 一手中签率：{g('one_lot_success_rate_pct')}
 - 孖展倍数：{g('margin_multiple')}
 
-## 三、基石与投行
+## 4. 基石与投行
 
 - 基石数量：{g('cornerstone_count')}
 - 基石金额：{g('cornerstone_amount_hkd')}
@@ -142,7 +169,7 @@ def make_memo(row: pd.Series) -> str:
 - 账簿管理人：{g('top_bookrunners')}
 - 承销团：{g('top_underwriters')}
 
-## 四、暗盘和上市后路径
+## 5. 暗盘与上市后路径
 
 - 暗盘开盘：{g('gray_open_ret_pct')}
 - 暗盘收盘：{g('gray_close_ret_pct')}
@@ -154,11 +181,11 @@ def make_memo(row: pd.Series) -> str:
 - 路径标签：{g('path_label')}
 - 行情状态：{g('quote_status')}
 
-## 五、风险标签
+## 6. 风险标签
 
-{g('risk_tags_step7', g('risk_tags'))}
+{g('risk_tags_step8')}
 
-## 六、业务简介 / 募资用途
+## 7. 业务简介 / 募资用途
 
 ### 业务简介
 {g('business_scope')}
@@ -166,153 +193,185 @@ def make_memo(row: pd.Series) -> str:
 ### 募资用途
 {g('use_of_proceeds')}
 """
-    return memo
 
 
-pool, paths, quotes, inventory = load_all()
+pool, paths, quotes, inventory, buckets, profile_perf, diag, watch, weight_profiles = load_all()
 
-st.title("港股 IPO / 半新股决策驾驶舱 · Step 7")
-st.caption("发行结构 + 打新热度 + 基石/投行 + 暗盘 + 上市后0-180D路径，输出一级/基石/二级/卖点建议。")
+st.title("港股 IPO / 半新股决策驾驶舱 · Step 8")
+st.caption("Step 8：在 Step 7 基础上增加因子拆解、权重方案、分层回测、买卖触发器和单票模型解释。")
 
 if pool.empty:
-    st.error("未找到 deploy_data/ipo_decision_scored_step7.csv 或 ipo_decision_pool.csv")
+    st.error("未找到 deploy_data/ipo_decision_scored_step8.csv / ipo_decision_pool.csv")
     st.stop()
 
-# 补动态库存显示，避免旧 data_inventory 显示行情未接入
-inv_extra = []
+# 动态补库存显示
+extra = []
 if not quotes.empty:
-    inv_extra.append({"source_name": "上市后0-180D行情", "file_name": "ipo_daily_quotes_180d.csv", "raw_rows": len(quotes), "normalized_rows": len(quotes), "status": "已接入"})
+    extra.append({"source_name": "上市后0-180D行情", "file_name": "ipo_daily_quotes_180d.csv", "raw_rows": len(quotes), "normalized_rows": len(quotes), "status": "已接入"})
 if not paths.empty:
-    inv_extra.append({"source_name": "上市后路径标签", "file_name": "ipo_post_listing_paths.csv", "raw_rows": len(paths), "normalized_rows": len(paths), "status": "已接入"})
-if "ipo_decision_score" in pool.columns:
-    inv_extra.append({"source_name": "Step7决策评分", "file_name": "ipo_decision_scored_step7.csv", "raw_rows": len(pool), "normalized_rows": len(pool), "status": "已接入"})
-if not inventory.empty and inv_extra:
-    inventory = inventory[~inventory["source_name"].isin([x["source_name"] for x in inv_extra])]
-    inventory = pd.concat([inventory, pd.DataFrame(inv_extra)], ignore_index=True)
-elif inv_extra:
-    inventory = pd.DataFrame(inv_extra)
+    extra.append({"source_name": "上市后路径标签", "file_name": "ipo_post_listing_paths.csv", "raw_rows": len(paths), "normalized_rows": len(paths), "status": "已接入"})
+if "step8_score" in pool.columns:
+    extra.append({"source_name": "Step8决策评分", "file_name": "ipo_decision_scored_step8.csv", "raw_rows": len(pool), "normalized_rows": len(pool), "status": "已接入"})
+if extra:
+    new_inv = pd.DataFrame(extra)
+    if inventory.empty:
+        inventory = new_inv
+    else:
+        inventory = inventory[~inventory["source_name"].isin(new_inv["source_name"])]
+        inventory = pd.concat([inventory, new_inv], ignore_index=True)
 
 with st.sidebar:
-    st.success(f"样本：{len(pool):,} 只/条")
+    st.success(f"样本：{len(pool):,} 条")
     if "listing_date" in pool.columns:
-        mind, maxd = pool["listing_date"].min(), pool["listing_date"].max()
-        st.caption(f"上市日范围：{mind.date() if pd.notna(mind) else '-'} 至 {maxd.date() if pd.notna(maxd) else '-'}")
-    tier_opts = sorted([x for x in pool.get("decision_tier_step7", pd.Series(dtype=str)).dropna().unique()])
+        dates = pool["listing_date"].dropna()
+        if not dates.empty:
+            st.caption(f"上市日范围：{dates.min().date()} 至 {dates.max().date()}")
+    tier_col = "decision_tier_step8" if "decision_tier_step8" in pool.columns else "decision_tier_step7"
+    tier_opts = sorted([x for x in pool.get(tier_col, pd.Series(dtype=str)).dropna().astype(str).unique()])
     selected_tiers = st.multiselect("决策层", tier_opts, default=tier_opts)
     industry_opts = sorted([x for x in pool.get("industry_level_1", pd.Series(dtype=str)).dropna().astype(str).unique() if x and x != "nan"])
     selected_industries = st.multiselect("行业", industry_opts, default=[])
     quote_opts = sorted([x for x in pool.get("quote_status", pd.Series(dtype=str)).dropna().astype(str).unique() if x and x != "nan"])
     selected_quote = st.multiselect("行情状态", quote_opts, default=[])
-    min_score = st.slider("最低综合分", 0, 100, 0, 5)
+    min_score = st.slider("最低 Step8 综合分", 0, 100, 0, 5)
     keyword = st.text_input("搜索代码/简称/基石/保荐人")
 
 view = pool.copy()
-if selected_tiers and "decision_tier_step7" in view.columns:
-    view = view[view["decision_tier_step7"].isin(selected_tiers)]
+if selected_tiers and tier_col in view.columns:
+    view = view[view[tier_col].isin(selected_tiers)]
 if selected_industries and "industry_level_1" in view.columns:
     view = view[view["industry_level_1"].isin(selected_industries)]
 if selected_quote and "quote_status" in view.columns:
     view = view[view["quote_status"].isin(selected_quote)]
-if "ipo_decision_score" in view.columns:
-    view = view[pd.to_numeric(view["ipo_decision_score"], errors="coerce").fillna(0) >= min_score]
+if "step8_score" in view.columns:
+    view = view[to_num(view["step8_score"]).fillna(0) >= min_score]
 if keyword:
     k = keyword.lower().strip()
-    text_cols = [c for c in ["code", "name", "sponsor", "overall_coordinator", "cornerstone_top_names", "top_bookrunners", "top_underwriters"] if c in view.columns]
+    text_cols = [c for c in ["code", "name", "sponsor", "overall_coordinator", "cornerstone_top_names", "top_bookrunners", "top_underwriters", "business_scope"] if c in view.columns]
     mask = pd.Series(False, index=view.index)
     for c in text_cols:
         mask |= view[c].astype(str).str.lower().str.contains(k, na=False)
     view = view[mask]
 
-metric_cols = st.columns(6)
+metric_cols = st.columns(7)
 metric_cols[0].metric("筛选样本", f"{len(view):,}")
-metric_cols[1].metric("A高优先", int(view.get("decision_tier_step7", pd.Series(dtype=str)).astype(str).str.contains("A", na=False).sum()))
-metric_cols[2].metric("B交易观察", int(view.get("decision_tier_step7", pd.Series(dtype=str)).astype(str).str.contains("B", na=False).sum()))
-metric_cols[3].metric("有0-180D行情", int(pd.to_numeric(view.get("quote_rows", pd.Series(dtype=float)), errors="coerce").fillna(0).gt(0).sum()))
-metric_cols[4].metric("平均综合分", fmt_num(pd.to_numeric(view.get("ipo_decision_score", pd.Series(dtype=float)), errors="coerce").mean(), 1))
-metric_cols[5].metric("深V/强势路径", int(view.get("path_label", pd.Series(dtype=str)).astype(str).str.contains("深V|强势|反弹", na=False).sum()))
+metric_cols[1].metric("A高优先", int(view.get("decision_tier_step8", pd.Series(dtype=str)).astype(str).str.contains("A", na=False).sum()))
+metric_cols[2].metric("B交易观察", int(view.get("decision_tier_step8", pd.Series(dtype=str)).astype(str).str.contains("B", na=False).sum()))
+metric_cols[3].metric("有行情", int(to_num(view.get("quote_rows", pd.Series(dtype=float))).fillna(0).gt(0).sum()))
+metric_cols[4].metric("平均分", fmt_num(to_num(view.get("step8_score", pd.Series(dtype=float))).mean(), 1))
+metric_cols[5].metric("高风险", int(to_num(view.get("risk_penalty_score", pd.Series(dtype=float))).fillna(0).ge(18).sum()))
+metric_cols[6].metric("强势/深V", int(view.get("path_label", pd.Series(dtype=str)).astype(str).str.contains("强势|深V|修复|反弹", na=False).sum()))
 
 tabs = st.tabs([
     "① 决策池",
-    "② 一级/基石评分",
-    "③ 暗盘/首日",
-    "④ 0-180D状态机",
-    "⑤ 基石/孖展/投行",
+    "② 权重与回测",
+    "③ 因子诊断",
+    "④ 交易状态机",
+    "⑤ 风险预警",
     "⑥ 单票Memo",
-    "⑦ 回测复盘",
-    "⑧ 数据完整度",
-    "⑨ 更新说明",
+    "⑦ 数据完整度",
+    "⑧ 更新说明",
 ])
 
 with tabs[0]:
-    st.subheader("综合优先级列表")
-    st.caption("A不是直接买入，而是进入重点研究和额度准备；B适合交易观察；C等待价格/信息触发；D只跟踪或回避。")
-    sort_col = st.selectbox("排序字段", [c for c in ["ipo_decision_score", "issue_participation_score", "secondary_trade_score", "a1_prescreen_score", "listing_date"] if c in view.columns])
+    st.subheader("Step 8 综合决策池")
+    sort_options = [c for c in ["step8_score", "primary_score_step8", "cornerstone_score_step8", "secondary_score_step8", "risk_penalty_score", "listing_date"] if c in view.columns]
+    sort_col = st.selectbox("排序字段", sort_options, index=0 if sort_options else None)
     asc = st.toggle("升序", value=False)
-    table = view.sort_values(sort_col, ascending=asc).copy()
-    display_cols = [
-        "decision_tier_step7", "code", "name", "listing_date", "lifecycle_stage", "industry_level_1",
-        "ipo_decision_score", "issue_participation_score", "secondary_trade_score", "a1_prescreen_score",
-        "primary_recommendation", "secondary_recommendation", "sell_risk_recommendation", "risk_tags_step7",
+    table = view.sort_values(sort_col, ascending=asc) if sort_col else view
+    cols = [
+        "decision_tier_step8", "code", "name", "listing_date", "lifecycle_stage", "industry_level_1",
+        "step8_score", "primary_score_step8", "cornerstone_score_step8", "secondary_score_step8", "risk_penalty_score",
+        "primary_recommendation_step8", "cornerstone_recommendation_step8", "secondary_recommendation_step8",
+        "buy_trigger_step8", "sell_trigger_step8", "risk_tags_step8",
     ]
     cn = {
-        "decision_tier_step7": "决策层", "code": "代码", "name": "简称", "listing_date": "上市日", "lifecycle_stage": "阶段", "industry_level_1": "行业",
-        "ipo_decision_score": "综合分", "issue_participation_score": "一级分", "secondary_trade_score": "二级分", "a1_prescreen_score": "A1分",
-        "primary_recommendation": "一级建议", "secondary_recommendation": "二级建议", "sell_risk_recommendation": "卖点/风控", "risk_tags_step7": "风险标签",
+        "decision_tier_step8":"决策层", "code":"代码", "name":"简称", "listing_date":"上市日", "lifecycle_stage":"阶段", "industry_level_1":"行业",
+        "step8_score":"综合分", "primary_score_step8":"一级分", "cornerstone_score_step8":"基石分", "secondary_score_step8":"二级分", "risk_penalty_score":"风险惩罚",
+        "primary_recommendation_step8":"一级建议", "cornerstone_recommendation_step8":"基石建议", "secondary_recommendation_step8":"二级建议",
+        "buy_trigger_step8":"买入触发", "sell_trigger_step8":"卖点/风控", "risk_tags_step8":"风险标签",
     }
-    show = table[[c for c in display_cols if c in table.columns]].rename(columns=cn)
-    show_df(show, height=620)
-    download_csv_button(table, "ipo_decision_pool_filtered.csv")
+    show_df(table[[c for c in cols if c in table.columns]].rename(columns=cn), height=660)
+    download_csv_button(table, "step8_decision_pool_filtered.csv")
 
 with tabs[1]:
-    st.subheader("一级参与 / 基石锚定评分")
-    table = view.sort_values("issue_participation_score" if "issue_participation_score" in view.columns else view.columns[0], ascending=False).copy()
-    cols = ["code", "name", "listing_date", "issue_price", "offer_price_low", "offer_price_high", "public_subscription_multiple", "public_subscription_multiple_ballot", "one_lot_success_rate_pct", "margin_multiple", "cornerstone_count", "cornerstone_quality_score", "issue_participation_score", "primary_recommendation", "cornerstone_recommendation", "risk_tags_step7"]
-    show_df(table, cols, height=620)
-    st.markdown("""
-**读法：** 公开认购、孖展、中签率反映资金拥挤度；基石质量和账簿管理人反映机构背书；过度拥挤会进入风险标签，不机械等同于买入。
-""")
+    st.subheader("权重方案与分层回测")
+    st.caption("这是规则模型复盘，目标是检验高分组是否更容易出现强势/深V/可交易路径，不代表未来收益承诺。")
+    c1, c2 = st.columns([1.1, 1])
+    with c1:
+        st.markdown("### 分数分层表现")
+        show_df(pct_view(buckets, ["首日均值", "二十日最大均值", "六十日最大均值", "一八零日最大均值", "二十日最小均值", "交易成功率", "强势或深V率", "坏路径率"]), height=260)
+        if not buckets.empty and "score_bucket" in buckets.columns:
+            chart = buckets.set_index("score_bucket")[[c for c in ["交易成功率", "坏路径率", "强势或深V率"] if c in buckets.columns]]
+            st.bar_chart(chart)
+    with c2:
+        st.markdown("### 权重方案表现")
+        show_df(pct_view(profile_perf, ["top_tradeable_20d_rate", "top_strong_or_deepv_rate", "top_bad_path_rate", "top_d1_mean", "top_max20_mean", "top_min20_mean"]), height=260)
+        if weight_profiles:
+            with st.expander("查看权重配置", expanded=False):
+                for k, v in weight_profiles.items():
+                    st.markdown(f"**{k} / {v.get('name_cn','')}**：{v.get('description','')}")
+                    st.json(v.get("weights", {}))
+    st.markdown("### 方案分数对比")
+    score_cols = [c for c in ["code", "name", "listing_date", "score_balanced", "score_primary_ipo", "score_secondary_trade", "score_anti_break", "score_hot_market", "step8_score", "decision_tier_step8"] if c in view.columns]
+    show_df(view.sort_values("step8_score", ascending=False)[score_cols], height=360)
 
 with tabs[2]:
-    st.subheader("暗盘 / 首日信号")
-    cols = ["code", "name", "listing_date", "issue_price", "gray_date", "gray_open_ret_pct", "gray_close_ret_pct", "gray_amount_10k_hkd", "d1_open_ret_pct", "d1_close_ret_pct", "secondary_trade_score", "primary_recommendation", "secondary_recommendation"]
-    table = view.copy()
-    show_df(table, cols, height=620)
-    st.caption("暗盘强但首日不跟随，容易出现升后回落；暗盘弱且首日不能收回发行价，原则上不追。")
+    st.subheader("因子诊断")
+    st.caption("看每个因子在当前样本中对20D可交易路径的区分度。top_minus_bottom越高，说明高分分位比低分分位更有效。")
+    show_df(pct_view(diag, ["corr_max20", "corr_min20", "top_quartile_tradeable_rate", "bottom_quartile_tradeable_rate", "top_minus_bottom"]), height=340)
+    if not diag.empty and "factor" in diag.columns:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write("Top - Bottom 交易成功率差")
+            st.bar_chart(diag.set_index("factor")[["top_minus_bottom"]])
+        with c2:
+            st.write("因子与20D最大收益相关")
+            st.bar_chart(diag.set_index("factor")[["corr_max20"]])
+    st.markdown("### 单票因子雷达表")
+    factor_cols = ["issue_heat_score", "allocation_quality_score", "cornerstone_bank_score", "pricing_safety_score", "gray_signal_score", "post_listing_score", "a1_maturity_score", "data_quality_score", "risk_penalty_score"]
+    cols = ["code", "name", "step8_score", "decision_tier_step8"] + [c for c in factor_cols if c in view.columns]
+    show_df(view.sort_values("step8_score", ascending=False)[cols], height=420)
 
 with tabs[3]:
-    st.subheader("上市后 0-180D / 半新股状态机")
-    if paths.empty:
-        st.warning("未找到 ipo_post_listing_paths.csv")
-    else:
-        state = paths.copy()
-        if keyword and "code" in state.columns:
-            state = state[state.astype(str).agg(" ".join, axis=1).str.lower().str.contains(keyword.lower(), na=False)]
-        c1, c2 = st.columns([2, 1])
+    st.subheader("0-180D 交易状态机 / 买卖点")
+    cols = ["code", "name", "listing_date", "issue_price", "quote_rows", "quote_source", "quote_status", "path_label", "d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "secondary_score_step8", "buy_trigger_step8", "sell_trigger_step8"]
+    table = view.copy()
+    pct_cols = ["d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret"]
+    show_df(pct_view(table[[c for c in cols if c in table.columns]], pct_cols), height=560)
+    if not paths.empty:
+        c1, c2 = st.columns(2)
         with c1:
-            show_df(pct_cols(state, ["d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret"]), height=560)
+            st.write("路径分布")
+            st.bar_chart(paths.get("path_label", pd.Series(dtype=str)).value_counts())
         with c2:
-            if "path_label" in state.columns:
-                st.write("路径分布")
-                st.bar_chart(state["path_label"].value_counts())
-            if "quote_status" in state.columns:
-                st.write("行情状态")
-                st.bar_chart(state["quote_status"].value_counts())
-        if not quotes.empty:
-            st.markdown("### 单票行情明细")
-            options = (state["code"].astype(str) + " " + state.get("name", pd.Series("", index=state.index)).astype(str)).dropna().tolist()
-            sel = st.selectbox("选择股票", options, key="quote_sel")
-            code = sel.split()[0] if sel else ""
-            q = quotes[quotes["code"].astype(str).str.replace("^0+", "", regex=True).eq(code.replace(".HK", "").lstrip("0")) | quotes["code"].astype(str).eq(code)] if code else pd.DataFrame()
-            if not q.empty:
-                st.line_chart(q.set_index("date")[[c for c in ["close", "ret_from_issue"] if c in q.columns]])
-                show_df(q.tail(80), height=300)
+            st.write("行情状态")
+            st.bar_chart(paths.get("quote_status", pd.Series(dtype=str)).value_counts())
+    if not quotes.empty:
+        st.markdown("### 单票行情曲线")
+        options = (view["code"].astype(str) + " " + view.get("name", pd.Series("", index=view.index)).astype(str)).dropna().tolist()
+        sel = st.selectbox("选择股票", options, key="quote_line") if options else ""
+        code = sel.split()[0] if sel else ""
+        q = quotes[quotes["code"].astype(str).eq(code)].copy() if code and "code" in quotes.columns else pd.DataFrame()
+        if not q.empty:
+            q["date"] = pd.to_datetime(q["date"], errors="coerce")
+            chart_cols = [c for c in ["close", "ret_from_issue"] if c in q.columns]
+            st.line_chart(q.sort_values("date").set_index("date")[chart_cols])
+            show_df(q.sort_values("date").tail(80), height=260)
+        elif code:
+            st.info("这只股票暂无免费行情明细，可能是未上市、临时代码或免费源未覆盖。")
 
 with tabs[4]:
-    st.subheader("基石 / 孖展 / 投行结构")
-    table = view.sort_values("cornerstone_amount_hkd" if "cornerstone_amount_hkd" in view.columns else "ipo_decision_score", ascending=False).copy()
-    cols = ["code", "name", "listing_date", "cornerstone_count", "cornerstone_amount_hkd", "cornerstone_quality_score", "cornerstone_top_names", "margin_amount_hkd", "margin_multiple", "margin_over_text", "sponsor", "overall_coordinator", "top_bookrunners", "top_underwriters"]
-    show_df(table, cols, height=620)
-    st.caption("基石数量多不一定好：短期减少流通，6个月后要关注锁定期和潜在供给。")
+    st.subheader("风险预警看板")
+    risk = view.copy()
+    if "risk_penalty_score" in risk.columns:
+        risk = risk.sort_values("risk_penalty_score", ascending=False)
+    cols = ["code", "name", "listing_date", "step8_score", "risk_penalty_score", "margin_multiple", "public_subscription_multiple", "one_lot_success_rate_pct", "path_label", "quote_status", "risk_tags_step8", "sell_trigger_step8"]
+    show_df(risk[[c for c in cols if c in risk.columns]], height=560)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("孖展>=500倍", int(to_num(view.get("margin_multiple", pd.Series(dtype=float))).fillna(0).ge(500).sum()))
+    c2.metric("坏路径", int(view.get("path_label", pd.Series(dtype=str)).astype(str).str.contains("破发|弱势|升后破发", na=False).sum()))
+    c3.metric("行情缺失", int(view.get("quote_status", pd.Series(dtype=str)).astype(str).eq("missing").sum()))
 
 with tabs[5]:
     st.subheader("单票投资 Memo")
@@ -320,77 +379,76 @@ with tabs[5]:
     if not options:
         st.info("当前筛选无股票")
     else:
-        sel = st.selectbox("选择股票", options, key="memo_sel")
+        sel = st.selectbox("选择股票", options, key="memo")
         code = sel.split()[0]
         row = view[view["code"].astype(str).eq(code)].iloc[0]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("综合分", fmt_num(row.get("ipo_decision_score"), 1))
-        c2.metric("一级分", fmt_num(row.get("issue_participation_score"), 1))
-        c3.metric("二级分", fmt_num(row.get("secondary_trade_score"), 1))
-        c4.metric("决策层", str(row.get("decision_tier_step7", "")))
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("综合分", fmt_num(row.get("step8_score"), 1))
+        c2.metric("一级分", fmt_num(row.get("primary_score_step8"), 1))
+        c3.metric("基石分", fmt_num(row.get("cornerstone_score_step8"), 1))
+        c4.metric("二级分", fmt_num(row.get("secondary_score_step8"), 1))
+        c5.metric("风险惩罚", fmt_num(row.get("risk_penalty_score"), 1))
         st.markdown("### 投资结论")
-        st.write(row.get("model_recommendation_step7", ""))
-        st.write("**基石/锚定：**", row.get("cornerstone_recommendation", ""))
-        st.write("**卖点/风控：**", row.get("sell_risk_recommendation", ""))
-        st.write("**风险标签：**", row.get("risk_tags_step7", row.get("risk_tags", "")))
+        st.write(row.get("final_recommendation_step8", ""))
+        st.write("**买入触发：**", row.get("buy_trigger_step8", ""))
+        st.write("**卖点/风控：**", row.get("sell_trigger_step8", ""))
+        st.write("**风险标签：**", row.get("risk_tags_step8", ""))
         memo = make_memo(row)
-        st.download_button("下载这只股票的 Markdown Memo", data=memo.encode("utf-8-sig"), file_name=f"{code}_ipo_memo.md", mime="text/markdown")
+        st.download_button("下载这只股票 Markdown Memo", memo.encode("utf-8-sig"), file_name=f"{code}_step8_memo.md", mime="text/markdown")
         with st.expander("查看完整 Memo", expanded=True):
             st.markdown(memo)
 
 with tabs[6]:
-    st.subheader("回测复盘 / 模型解释")
-    st.caption("当前为规则评分复盘，不是实盘收益承诺。重点看模型高分组是否更容易出现强势/深V路径、低分组是否更容易破发。")
-    back = view.copy()
-    if "ipo_decision_score" in back.columns and "d1_close_ret" in back.columns:
-        back["score_bucket"] = pd.cut(pd.to_numeric(back["ipo_decision_score"], errors="coerce"), bins=[0, 52, 65, 78, 100], labels=["D", "C", "B", "A"], include_lowest=True)
-        agg = back.groupby("score_bucket", observed=False).agg(
-            样本数=("code", "count"),
-            首日均值=("d1_close_ret", "mean"),
-            二十日最大均值=("max_20_ret", "mean"),
-            六十日最大均值=("max_60_ret", "mean"),
-            一八零日最大均值=("max_180_ret", "mean"),
-            二十日最小均值=("min_20_ret", "mean"),
-        ).reset_index()
-        show_df(pct_cols(agg, ["首日均值", "二十日最大均值", "六十日最大均值", "一八零日最大均值", "二十日最小均值"]), height=260)
-        st.bar_chart(back["decision_tier_step7"].value_counts() if "decision_tier_step7" in back.columns else pd.Series(dtype=int))
-    else:
-        st.info("缺少评分或行情收益字段，无法做分层复盘。")
-
-with tabs[7]:
     st.subheader("数据完整度")
     show_df(inventory, height=420)
-    st.markdown("""
-**说明：** `partial` 通常表示股票上市不足180天，或者免费行情源只能拿到部分日期；这不等于未接入。真正需要人工复核的是 `missing`。
-""")
     if not quotes.empty:
-        st.write("行情源统计")
-        show_df(pd.DataFrame({"source": quotes.get("source", pd.Series(dtype=str)).value_counts().index, "rows": quotes.get("source", pd.Series(dtype=str)).value_counts().values}), height=180)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write("行情源统计")
+            src = quotes.get("source", pd.Series(dtype=str)).value_counts().reset_index()
+            src.columns = ["source", "rows"]
+            show_df(src, height=180)
+        with c2:
+            st.write("行情记录数统计")
+            if not paths.empty and "quote_status" in paths.columns:
+                st.bar_chart(paths["quote_status"].value_counts())
+    st.caption("partial通常表示上市不足180天，或免费源只拿到部分日期；不等于未接入。missing才需要人工复核。")
 
-with tabs[8]:
+with tabs[7]:
     st.subheader("更新说明")
     st.markdown("""
-### 每次更新数据的顺序
+### 日常更新顺序
 
-1. 从 iFind 导出新的结构化表，放入 `ifind_exports/`，再运行导入脚本。
-2. 抓免费 0-180D 行情：
+1. 从 iFind 导出结构化表，放入 `ifind_exports/` 后运行：
+
+```bash
+python scripts/build_deploy_data_from_ifind_exports.py
+```
+
+2. 抓免费0-180D行情并生成路径：
 
 ```bash
 python scripts/fetch_free_hk_quotes_180d.py --pool deploy_data/ipo_decision_pool.csv --out deploy_data/ipo_daily_quotes_180d.csv
 python scripts/build_post_listing_paths.py --update-pool
 ```
 
-3. 重新跑 Step 7 决策评分：
+3. 重新跑 Step 8 评分和回测：
 
 ```bash
-python scripts/score_decisions.py
+python scripts/score_step8_model_lab.py
 ```
 
-4. 上传 `deploy_data/` 下更新后的 CSV 到 GitHub。
+4. 上传 `deploy_data/` 中更新后的 CSV 到 GitHub。
 
-### 现在这版的核心输出
+### Step 8 新增输出
 
-- `ipo_decision_scored_step7.csv`：四阶段评分和投资建议。
-- `ipo_post_listing_paths.csv`：0-180D路径标签。
-- `ipo_daily_quotes_180d.csv`：免费行情明细。
+- `ipo_decision_scored_step8.csv`：多场景评分、因子拆解、买卖触发器。
+- `step8_backtest_score_buckets.csv`：A/B/C/D 分层回测。
+- `step8_weight_profile_performance.csv`：权重方案表现。
+- `step8_factor_diagnostics.csv`：因子诊断。
+- `step8_watchlist_actions.csv`：行动清单。
+
+### 使用提醒
+
+模型是辅助决策，不是自动交易。A高优先表示进入重点研究和额度准备，最终仍需叠加行业/公司基本面、估值和发行条款判断。
 """)

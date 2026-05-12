@@ -1,0 +1,72 @@
+{
+  "balanced": {
+    "name_cn": "均衡默认",
+    "description": "适合常态市场。发行结构、暗盘、上市后路径均衡参考。",
+    "weights": {
+      "issue_heat_score": 0.18,
+      "allocation_quality_score": 0.10,
+      "cornerstone_bank_score": 0.16,
+      "pricing_safety_score": 0.10,
+      "gray_signal_score": 0.14,
+      "post_listing_score": 0.22,
+      "a1_maturity_score": 0.06,
+      "data_quality_score": 0.04
+    }
+  },
+  "primary_ipo": {
+    "name_cn": "一级打新优先",
+    "description": "更重视发行热度、中签/孖展、基石和投行，用于招股至配发结果前后。",
+    "weights": {
+      "issue_heat_score": 0.28,
+      "allocation_quality_score": 0.15,
+      "cornerstone_bank_score": 0.20,
+      "pricing_safety_score": 0.14,
+      "gray_signal_score": 0.08,
+      "post_listing_score": 0.05,
+      "a1_maturity_score": 0.06,
+      "data_quality_score": 0.04
+    }
+  },
+  "secondary_trade": {
+    "name_cn": "二级交易优先",
+    "description": "更重视暗盘/首日和0-180D路径，用于上市后买入、深V和卖点判断。",
+    "weights": {
+      "issue_heat_score": 0.10,
+      "allocation_quality_score": 0.06,
+      "cornerstone_bank_score": 0.10,
+      "pricing_safety_score": 0.07,
+      "gray_signal_score": 0.20,
+      "post_listing_score": 0.38,
+      "a1_maturity_score": 0.03,
+      "data_quality_score": 0.06
+    }
+  },
+  "anti_break": {
+    "name_cn": "防破发保守",
+    "description": "更强调定价安全、负路径惩罚和数据质量，适合市场转弱时。",
+    "weights": {
+      "issue_heat_score": 0.13,
+      "allocation_quality_score": 0.12,
+      "cornerstone_bank_score": 0.16,
+      "pricing_safety_score": 0.20,
+      "gray_signal_score": 0.10,
+      "post_listing_score": 0.20,
+      "a1_maturity_score": 0.04,
+      "data_quality_score": 0.05
+    }
+  },
+  "hot_market": {
+    "name_cn": "强势新股市",
+    "description": "市场情绪好时，更多捕捉拥挤资金和强势路径，但保留风险惩罚。",
+    "weights": {
+      "issue_heat_score": 0.25,
+      "allocation_quality_score": 0.08,
+      "cornerstone_bank_score": 0.13,
+      "pricing_safety_score": 0.07,
+      "gray_signal_score": 0.19,
+      "post_listing_score": 0.22,
+      "a1_maturity_score": 0.02,
+      "data_quality_score": 0.04
+    }
+  }
+}
