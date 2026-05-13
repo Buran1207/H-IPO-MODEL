@@ -325,18 +325,48 @@ def build_a1_quality_scores(df: pd.DataFrame, weights: dict[str, float] | None =
     ind_score = ind.map(industry_score_map).fillna(55.0)
     hot_keywords = ["机器人", "人工智能", "AI", "半导体", "医疗器械", "创新药", "生物科技", "特专科技", "新能源", "算力", "云", "软件"]
     weak_keywords = ["物业", "建筑", "传统", "纺织", "餐饮", "煤", "钢", "建材"]
-    all_text = (out.get("industry_level_1", pd.Series("", index=out.index)).astype(str) + " " + out.get("industry_level_2", pd.Series("", index=out.index)).astype(str) + " " + out.get("business_scope", pd.Series("", index=out.index)).astype(str) + " " + out.get("company_profile", pd.Series("", index=out.index)).astype(str))
-    ind_score = ind_score + all_text.apply(lambda s: 8 if any(k in s for k in hot_keywords) else 0) - all_text.apply(lambda s: 6 if any(k in s for k in weak_keywords) else 0)
+
+    def safe_text(value) -> str:
+        """Convert pandas/pyarrow missing values to a normal string before keyword matching."""
+        try:
+            if pd.isna(value):
+                return ""
+        except Exception:
+            pass
+        return str(value)
+
+    def contains_any(value, keywords: list[str]) -> bool:
+        text = safe_text(value)
+        return any(k in text for k in keywords)
+
+    all_text = (
+        out.get("industry_level_1", pd.Series("", index=out.index)).map(safe_text)
+        + " "
+        + out.get("industry_level_2", pd.Series("", index=out.index)).map(safe_text)
+        + " "
+        + out.get("business_scope", pd.Series("", index=out.index)).map(safe_text)
+        + " "
+        + out.get("company_profile", pd.Series("", index=out.index)).map(safe_text)
+    )
+    ind_score = (
+        ind_score
+        + all_text.map(lambda s: 8 if contains_any(s, hot_keywords) else 0)
+        - all_text.map(lambda s: 6 if contains_any(s, weak_keywords) else 0)
+    )
     out["a1_industry_preference_score"] = ind_score.clip(0, 100).round(1)
 
     # Company quality proxy: use business/profile language and information completeness. This is a proxy before analyst overrides are introduced.
-    profile = (out.get("business_scope", pd.Series("", index=out.index)).fillna("").astype(str) + " " + out.get("company_profile", pd.Series("", index=out.index)).fillna("").astype(str))
+    profile = (
+        out.get("business_scope", pd.Series("", index=out.index)).map(safe_text)
+        + " "
+        + out.get("company_profile", pd.Series("", index=out.index)).map(safe_text)
+    )
     pos_words = ["领先", "龙头", "第一", "最大", "唯一", "稀缺", "全球", "行业排名", "自主研发", "核心技术", "商业化", "高增长"]
     neg_words = ["依赖", "亏损", "诉讼", "处罚", "客户集中", "供应商集中", "现金流", "资不抵债"]
     comp_score = pd.Series(50.0, index=out.index)
-    comp_score += profile.apply(lambda s: min(25, sum(1 for k in pos_words if k in s) * 5))
-    comp_score -= profile.apply(lambda s: min(20, sum(1 for k in neg_words if k in s) * 5))
-    comp_score += profile.str.len().clip(0, 5000) / 5000 * 10
+    comp_score += profile.map(lambda s: min(25, sum(1 for k in pos_words if k in s) * 5))
+    comp_score -= profile.map(lambda s: min(20, sum(1 for k in neg_words if k in s) * 5))
+    comp_score += profile.str.len().fillna(0).clip(0, 5000) / 5000 * 10
     out["a1_company_quality_score"] = comp_score.clip(0, 100).round(1)
 
     # Sponsor / intermediary quality: based on historical listed outcomes for matching sponsors/coordinators.
