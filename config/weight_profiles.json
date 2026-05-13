@@ -73,5 +73,19 @@
       "上市后路径": 15,
       "解禁风险": 15
     }
+  },
+  "_a1_default_weights": {
+    "zh_name": "A1默认项目质量评分",
+    "en_name": "A1 Default Project Quality Score",
+    "zh_desc": "申请状态不进入质量分；行业与港股市场偏好为核心权重。",
+    "en_desc": "Filing status is excluded from quality score; sector and HK market preference is the core weight.",
+    "weights": {
+      "industry": 35,
+      "company": 20,
+      "sponsor": 15,
+      "peer": 15,
+      "tradability": 10,
+      "market": 5
+    }
   }
 }

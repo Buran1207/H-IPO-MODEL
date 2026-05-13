@@ -172,6 +172,11 @@ COL_ZH = {
     "cornerstone_value_to_avg20_turnover": "基石金额/20日成交额", "avg20_trading_value_hkd_est": "20日均成交额估算", "business_scope": "业务简介",
     "use_of_proceeds": "募资用途", "a1_action_cn": "A1动作", "first_day_action_cn": "暗盘/首日动作", "custom_score": "自定义分",
     "custom_tier_cn": "自定义评级",
+    "a1_quality_score": "A1项目质量分", "a1_industry_preference_score": "行业与港股偏好", "a1_company_quality_score": "公司稀缺性/基本面",
+    "a1_sponsor_quality_score": "保荐/中介质量", "a1_peer_ipo_score": "历史同类IPO", "a1_tradability_score": "未来交易可做性", "a1_market_window_score": "市场窗口",
+    "a1_research_priority_cn": "研究优先级", "future_ipo_participation_cn": "未来IPO参与倾向", "current_investment_status_cn": "当前投资状态",
+    "next_action_cn": "下一动作", "filing_count": "递表次数", "latest_application_date_calc": "最近申请日", "first_application_date_calc": "首次申请日",
+    "has_lapsed_history": "曾失效", "status_note_cn": "状态提示", "a1_positive_reasons_cn": "加分原因", "a1_negative_reasons_cn": "扣分原因",
 }
 COL_EN = {
     "code": "Code", "temp_code": "Temp Code", "name": "Name", "listing_date": "Listing Date", "application_date": "Application Date",
@@ -194,6 +199,11 @@ COL_EN = {
     "cornerstone_value_to_avg20_turnover": "Cornerstone / Avg 20D Trading Value", "avg20_trading_value_hkd_est": "Avg 20D Trading Value Est.", "business_scope": "Business Scope",
     "use_of_proceeds": "Use of Proceeds", "a1_action_en": "A1 Action", "first_day_action_en": "Gray / First-day Action", "custom_score": "Custom Score",
     "custom_tier_en": "Custom Rating",
+    "a1_quality_score": "A1 Project Quality Score", "a1_industry_preference_score": "Sector & HK Market Preference", "a1_company_quality_score": "Scarcity / Fundamental Potential",
+    "a1_sponsor_quality_score": "Sponsor / Intermediary Quality", "a1_peer_ipo_score": "Comparable IPO Performance", "a1_tradability_score": "Future Tradability", "a1_market_window_score": "Market Window",
+    "a1_research_priority_en": "Research Priority", "future_ipo_participation_en": "Future IPO Participation Bias", "current_investment_status_en": "Current Investment Status",
+    "next_action_en": "Next Action", "filing_count": "Filing Count", "latest_application_date_calc": "Latest Filing Date", "first_application_date_calc": "First Filing Date",
+    "has_lapsed_history": "Had Lapsed Filing", "status_note_en": "Status Note", "a1_positive_reasons_en": "Positive Reasons", "a1_negative_reasons_en": "Negative Reasons",
 }
 
 
@@ -224,6 +234,329 @@ def load_all():
         except Exception:
             weight_profiles = {}
     return pool, paths, quotes, inventory, buckets, profile_perf, diag, weight_profiles
+
+
+
+
+def normalize_name_value(x) -> str:
+    if pd.isna(x):
+        return ""
+    s = str(x).strip()
+    for suf in ["-W", "-B", "－W", "－B", "股份有限公司", "有限公司", "控股", "集团", "科技", "股份"]:
+        s = s.replace(suf, "")
+    return s.replace(" ", "").replace("（", "(").replace("）", ")")
+
+
+def safe_date_series(df: pd.DataFrame, col: str) -> pd.Series:
+    if col in df.columns:
+        return pd.to_datetime(df[col], errors="coerce")
+    return pd.Series(pd.NaT, index=df.index)
+
+
+def is_unlisted_row(df: pd.DataFrame) -> pd.Series:
+    """A1 watchlist includes companies not yet listed; already listed companies are removed."""
+    listing = safe_date_series(df, "listing_date")
+    today = pd.Timestamp.today().normalize()
+    return listing.isna() | (listing > today)
+
+
+def status_is_lapsed(status: object) -> bool:
+    s = "" if pd.isna(status) else str(status)
+    return any(k in s for k in ["失效", "撤回", "被拒", "终止", "不予"])
+
+
+def status_rank(status: object) -> int:
+    s = "" if pd.isna(status) else str(status)
+    if any(k in s for k in ["招股", "待上市", "定价", "配售"]): return 60
+    if any(k in s for k in ["通过聆讯", "聆讯后"]): return 55
+    if any(k in s for k in ["处理中", "递表"]): return 45
+    if status_is_lapsed(s): return 20
+    return 35
+
+
+def split_names(text: object) -> list[str]:
+    if pd.isna(text):
+        return []
+    s = str(text)
+    for sep in ["；", ";", "、", ",", "，", "/", "及"]:
+        s = s.replace(sep, "|")
+    return [x.strip() for x in s.split("|") if x.strip() and x.strip() != "--"]
+
+
+def score_from_rank_pct(x, default=50):
+    if pd.isna(x):
+        return default
+    return float(np.clip(30 + 70 * x, 0, 100))
+
+
+def build_a1_quality_scores(df: pd.DataFrame, weights: dict[str, float] | None = None) -> pd.DataFrame:
+    """Build A1 project-quality scores. Application status is not part of the quality score."""
+    out = df.copy()
+    if weights is None:
+        weights = {
+            "industry": 35,
+            "company": 20,
+            "sponsor": 15,
+            "peer": 15,
+            "tradability": 10,
+            "market": 5,
+        }
+    total_w = sum(float(v) for v in weights.values()) or 1
+
+    listed = out[~is_unlisted_row(out)].copy()
+    # Base listed-performance score for peer/sponsor history.
+    perf = pd.Series(50.0, index=listed.index)
+    if "d1_close_ret" in listed.columns:
+        perf += to_num(listed["d1_close_ret"]).fillna(0).clip(-0.5, 1.0) * 25
+    if "max_20_ret" in listed.columns:
+        perf += to_num(listed["max_20_ret"]).fillna(0).clip(-0.5, 2.0) * 20
+    if "min_20_ret" in listed.columns:
+        perf += to_num(listed["min_20_ret"]).fillna(0).clip(-1.0, 0.2) * 15
+    if "post_listing_score" in listed.columns:
+        perf = perf * 0.45 + to_num(listed["post_listing_score"]).fillna(50) * 0.55
+    perf = perf.clip(0, 100)
+    listed = listed.assign(_perf=perf)
+
+    # Industry score: mainly from same-sector listed results, with small keyword priors.
+    industry_score_map = {}
+    if "industry_level_1" in listed.columns and not listed.empty:
+        industry_score_map = listed.groupby("industry_level_1")["_perf"].mean().to_dict()
+    ind = out.get("industry_level_1", pd.Series("", index=out.index)).astype(str)
+    ind_score = ind.map(industry_score_map).fillna(55.0)
+    hot_keywords = ["机器人", "人工智能", "AI", "半导体", "医疗器械", "创新药", "生物科技", "特专科技", "新能源", "算力", "云", "软件"]
+    weak_keywords = ["物业", "建筑", "传统", "纺织", "餐饮", "煤", "钢", "建材"]
+    all_text = (out.get("industry_level_1", pd.Series("", index=out.index)).astype(str) + " " + out.get("industry_level_2", pd.Series("", index=out.index)).astype(str) + " " + out.get("business_scope", pd.Series("", index=out.index)).astype(str) + " " + out.get("company_profile", pd.Series("", index=out.index)).astype(str))
+    ind_score = ind_score + all_text.apply(lambda s: 8 if any(k in s for k in hot_keywords) else 0) - all_text.apply(lambda s: 6 if any(k in s for k in weak_keywords) else 0)
+    out["a1_industry_preference_score"] = ind_score.clip(0, 100).round(1)
+
+    # Company quality proxy: use business/profile language and information completeness. This is a proxy before analyst overrides are introduced.
+    profile = (out.get("business_scope", pd.Series("", index=out.index)).fillna("").astype(str) + " " + out.get("company_profile", pd.Series("", index=out.index)).fillna("").astype(str))
+    pos_words = ["领先", "龙头", "第一", "最大", "唯一", "稀缺", "全球", "行业排名", "自主研发", "核心技术", "商业化", "高增长"]
+    neg_words = ["依赖", "亏损", "诉讼", "处罚", "客户集中", "供应商集中", "现金流", "资不抵债"]
+    comp_score = pd.Series(50.0, index=out.index)
+    comp_score += profile.apply(lambda s: min(25, sum(1 for k in pos_words if k in s) * 5))
+    comp_score -= profile.apply(lambda s: min(20, sum(1 for k in neg_words if k in s) * 5))
+    comp_score += profile.str.len().clip(0, 5000) / 5000 * 10
+    out["a1_company_quality_score"] = comp_score.clip(0, 100).round(1)
+
+    # Sponsor / intermediary quality: based on historical listed outcomes for matching sponsors/coordinators.
+    sponsor_perf = {}
+    if not listed.empty:
+        for _, r in listed.iterrows():
+            names = split_names(r.get("sponsor")) + split_names(r.get("overall_coordinator")) + split_names(r.get("top_bookrunners"))
+            for n in names:
+                sponsor_perf.setdefault(n, []).append(float(r.get("_perf", 50)))
+    sponsor_avg = {k: float(np.mean(v)) for k, v in sponsor_perf.items() if v}
+    strong_house = ["中金", "高盛", "摩根", "J.P. Morgan", "JP Morgan", "摩根士丹利", "美银", "花旗", "瑞银", "中信", "华泰", "海通", "中银", "招银", "建银"]
+    def sponsor_score_row(r):
+        names = split_names(r.get("sponsor")) + split_names(r.get("overall_coordinator"))
+        vals = [sponsor_avg[n] for n in names if n in sponsor_avg]
+        base = float(np.mean(vals)) if vals else 52.0
+        joined = " ".join(names)
+        if any(k in joined for k in strong_house):
+            base += 6
+        if not names:
+            base -= 8
+        return float(np.clip(base, 0, 100))
+    out["a1_sponsor_quality_score"] = out.apply(sponsor_score_row, axis=1).round(1)
+
+    # Peer IPO score: same industry and same broad board/type history.
+    peer_score = ind.map(industry_score_map).fillna(55.0)
+    if "board" in out.columns and "board" in listed.columns and not listed.empty:
+        board_map = listed.groupby("board")["_perf"].mean().to_dict()
+        peer_score = peer_score * 0.75 + out["board"].map(board_map).fillna(55.0) * 0.25
+    out["a1_peer_ipo_score"] = peer_score.clip(0, 100).round(1)
+
+    # Future tradability: expected attention/liquidity. Use available deal size if any, otherwise sector/sponsor proxy.
+    trad = pd.Series(50.0, index=out.index)
+    mcap = to_num(out.get("market_cap_hkdm", pd.Series(np.nan, index=out.index)))
+    proceeds = to_num(out.get("gross_proceeds_hkd", pd.Series(np.nan, index=out.index)))
+    trad += out["a1_industry_preference_score"].fillna(50).sub(50) * 0.25
+    trad += out["a1_sponsor_quality_score"].fillna(50).sub(50) * 0.15
+    # If market cap exists in HKD million, reward medium-sized deals; penalize extremely large/small.
+    trad += mcap.apply(lambda x: 12 if pd.notna(x) and 2000 <= x <= 50000 else (5 if pd.notna(x) and 500 <= x < 2000 else (-8 if pd.notna(x) and x > 100000 else 0)))
+    trad += proceeds.apply(lambda x: 8 if pd.notna(x) and 5e8 <= x <= 1.0e10 else (-6 if pd.notna(x) and x > 3.0e10 else 0))
+    out["a1_tradability_score"] = trad.clip(0, 100).round(1)
+
+    # Market window: recent IPO market state, same for all rows.
+    recent = listed.copy()
+    if "listing_date" in recent.columns:
+        recent["listing_date"] = pd.to_datetime(recent["listing_date"], errors="coerce")
+        recent = recent.sort_values("listing_date").tail(20)
+    if not recent.empty:
+        wins = (to_num(recent.get("d1_close_ret", pd.Series(np.nan, index=recent.index))) > 0).mean()
+        avg20 = to_num(recent.get("max_20_ret", pd.Series(np.nan, index=recent.index))).mean()
+        market_window = float(np.clip(40 + wins * 35 + (0 if pd.isna(avg20) else avg20 * 40), 0, 100))
+    else:
+        market_window = 55.0
+    out["a1_market_window_score"] = round(market_window, 1)
+
+    score = (
+        out["a1_industry_preference_score"] * float(weights.get("industry", 0)) +
+        out["a1_company_quality_score"] * float(weights.get("company", 0)) +
+        out["a1_sponsor_quality_score"] * float(weights.get("sponsor", 0)) +
+        out["a1_peer_ipo_score"] * float(weights.get("peer", 0)) +
+        out["a1_tradability_score"] * float(weights.get("tradability", 0)) +
+        out["a1_market_window_score"] * float(weights.get("market", 0))
+    ) / total_w
+    out["a1_quality_score"] = score.round(1)
+
+    def pr_cn(x):
+        if pd.isna(x): return "信息不足"
+        if x >= 80: return "A 重点跟踪"
+        if x >= 70: return "B+ 重点研究"
+        if x >= 60: return "B 研究池"
+        if x >= 50: return "C 观察"
+        return "D 低优先级"
+    def pr_en(x):
+        if pd.isna(x): return "Insufficient data"
+        if x >= 80: return "A High-priority watch"
+        if x >= 70: return "B+ Priority research"
+        if x >= 60: return "B Research pool"
+        if x >= 50: return "C Monitor"
+        return "D Low priority"
+    def tendency_cn(x):
+        if pd.isna(x): return "等待资料"
+        if x >= 80: return "拟重点参与，等待发行验证"
+        if x >= 70: return "倾向参与，需看定价"
+        if x >= 60: return "可参与，需强发行信号"
+        if x >= 50: return "暂不主动参与"
+        return "暂不参与"
+    def tendency_en(x):
+        if pd.isna(x): return "Wait for data"
+        if x >= 80: return "Likely priority participation, pending deal validation"
+        if x >= 70: return "Positive bias, subject to pricing"
+        if x >= 60: return "Participate only with strong deal signals"
+        if x >= 50: return "No proactive participation"
+        return "No participation"
+    out["a1_research_priority_cn"] = out["a1_quality_score"].map(pr_cn)
+    out["a1_research_priority_en"] = out["a1_quality_score"].map(pr_en)
+    out["future_ipo_participation_cn"] = out["a1_quality_score"].map(tendency_cn)
+    out["future_ipo_participation_en"] = out["a1_quality_score"].map(tendency_en)
+
+    reasons_add, reasons_sub = [], []
+    for _, r in out.iterrows():
+        adds, subs = [], []
+        if r.get("a1_industry_preference_score", 50) >= 70: adds.append("行业/港股偏好较强")
+        if r.get("a1_company_quality_score", 50) >= 70: adds.append("公司稀缺性或业务表述较强")
+        if r.get("a1_sponsor_quality_score", 50) >= 65: adds.append("保荐/中介质量较好")
+        if r.get("a1_peer_ipo_score", 50) >= 65: adds.append("历史同类IPO表现较好")
+        if r.get("a1_industry_preference_score", 50) < 45: subs.append("行业在港股新股市场偏弱")
+        if r.get("a1_company_quality_score", 50) < 45: subs.append("公司稀缺性/基本面信息不足")
+        if r.get("a1_sponsor_quality_score", 50) < 45: subs.append("中介历史表现或信息不足")
+        if not adds: adds.append("暂无明显结构性加分项")
+        if not subs: subs.append("主要扣分来自资料未完整披露前的不确定性")
+        reasons_add.append("；".join(adds[:3])); reasons_sub.append("；".join(subs[:3]))
+    out["a1_positive_reasons_cn"] = reasons_add
+    out["a1_negative_reasons_cn"] = reasons_sub
+    out["a1_positive_reasons_en"] = out["a1_positive_reasons_cn"]
+    out["a1_negative_reasons_en"] = out["a1_negative_reasons_cn"]
+    return out
+
+
+def add_current_status(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    today = pd.Timestamp.today().normalize()
+    listing = safe_date_series(out, "listing_date")
+    unlisted = listing.isna() | (listing > today)
+    status = out.get("application_status", pd.Series("", index=out.index)).astype(str)
+    issue = to_num(out.get("issue_price", pd.Series(np.nan, index=out.index))).notna()
+    offer = to_num(out.get("offer_price_high", pd.Series(np.nan, index=out.index))).notna() | out.get("offer_start_date", pd.Series(np.nan, index=out.index)).notna()
+    gray = out.get("gray_close_ret_pct", pd.Series(np.nan, index=out.index)).notna() | out.get("d1_close_ret", pd.Series(np.nan, index=out.index)).notna()
+    path = out.get("path_label", pd.Series("", index=out.index)).notna()
+    lock_high = out.get("lockup_pressure_cn", pd.Series("", index=out.index)).isin(["高", "中"])
+    cn, en, action_cn, action_en = [], [], [], []
+    for i, r in out.iterrows():
+        stt = str(r.get("application_status", ""))
+        li = pd.to_datetime(r.get("listing_date"), errors="coerce")
+        is_unlisted = pd.isna(li) or li > today
+        if is_unlisted and status_is_lapsed(stt):
+            cn.append("C6 失效观察"); en.append("C6 Lapsed filing watch")
+            action_cn.append("等待是否重新递表/更新财务资料，保留在未上市项目池")
+            action_en.append("Wait for refiling / updated financials; keep in unlisted project pool")
+        elif is_unlisted and not (pd.notna(r.get("issue_price")) or pd.notna(r.get("offer_price_high"))):
+            cn.append("C1 等待发行资料"); en.append("C1 Wait for deal terms")
+            action_cn.append("等待招股价区间、发行规模、基石和账簿热度")
+            action_en.append("Wait for offer range, deal size, cornerstone and bookbuilding signals")
+        elif is_unlisted and (pd.notna(r.get("issue_price")) or pd.notna(r.get("offer_price_high"))) and pd.isna(r.get("gray_close_ret_pct")):
+            cn.append("C2 等待配发/暗盘"); en.append("C2 Wait for allotment / gray market")
+            action_cn.append("等待配发结果、孖展/中签和暗盘确认")
+            action_en.append("Wait for allotment, margin/ballot and gray-market confirmation")
+        elif is_unlisted:
+            cn.append("C3 等待上市确认"); en.append("C3 Wait for listing confirmation")
+            action_cn.append("不追高，等待首日价格和成交确认")
+            action_en.append("Do not chase; wait for first-day price and turnover confirmation")
+        elif bool(lock_high.loc[i]) if i in lock_high.index else False:
+            cn.append("C5 等待风险释放"); en.append("C5 Wait for risk release")
+            action_cn.append("解禁或供给压力进入观察窗口，降低追高权重")
+            action_en.append("Lock-up/supply pressure in watch window; reduce chasing weight")
+        elif pd.notna(r.get("path_label")):
+            sc = r.get("secondary_score")
+            if pd.notna(sc) and float(sc) >= 65:
+                cn.append("B 二级交易观察"); en.append("B Secondary trading watch")
+                action_cn.append("等待回踩/趋势确认触发买点")
+                action_en.append("Wait for pullback / trend confirmation trigger")
+            else:
+                cn.append("C4 等待二级买点"); en.append("C4 Wait for secondary entry")
+                action_cn.append("不追高，等待深V、站回发行价或成交确认")
+                action_en.append("Do not chase; wait for deep-V, reclaim of issue price or turnover confirmation")
+        else:
+            base = r.get("investment_tier_cn", "")
+            if isinstance(base, str) and base.startswith("A"):
+                cn.append("A 重点参与"); en.append("A Priority participate")
+                action_cn.append("进入重点额度/交易讨论")
+                action_en.append("Move to priority allocation / trading discussion")
+            elif isinstance(base, str) and base.startswith("D"):
+                cn.append("D 回避/仅跟踪"); en.append("D Avoid / track only")
+                action_cn.append("不主动参与，保留复盘")
+                action_en.append("No active participation; keep for review")
+            else:
+                cn.append("C4 等待二级买点"); en.append("C4 Wait for secondary entry")
+                action_cn.append("等待价格、成交或风险释放")
+                action_en.append("Wait for price, turnover or risk release")
+    out["current_investment_status_cn"] = cn
+    out["current_investment_status_en"] = en
+    out["next_action_cn"] = action_cn
+    out["next_action_en"] = action_en
+    return out
+
+
+def build_a1_company_view(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return one-row-per-company A1 watchlist and application history. Already-listed companies are removed."""
+    d = df.copy()
+    today = pd.Timestamp.today().normalize()
+    listing = safe_date_series(d, "listing_date")
+    # Only unlisted: no listing date or future scheduled listing date.
+    d = d[listing.isna() | (listing > today)].copy()
+    # Must have at least application info / temp code / status to be considered A1 pipeline.
+    has_app = safe_date_series(d, "application_date").notna() | d.get("application_status", pd.Series("", index=d.index)).notna() | d.get("temp_code", pd.Series("", index=d.index)).notna()
+    d = d[has_app].copy()
+    if d.empty:
+        return d, d
+    name_key = d.get("name", pd.Series("", index=d.index)).fillna("").map(normalize_name_value)
+    alt_key = d.get("company_chinese_name", pd.Series("", index=d.index)).fillna("").map(normalize_name_value)
+    d["company_key"] = name_key.where(name_key != "", alt_key)
+    d["company_key"] = d["company_key"].where(d["company_key"] != "", d.get("temp_code", pd.Series("", index=d.index)).astype(str))
+    d["application_date_dt"] = safe_date_series(d, "application_date")
+    d["status_rank"] = d.get("application_status", pd.Series("", index=d.index)).map(status_rank)
+    d["_latest_sort"] = d["application_date_dt"].fillna(pd.Timestamp("1900-01-01"))
+    history = d.sort_values(["company_key", "application_date_dt", "status_rank"], ascending=[True, False, False]).copy()
+    counts = history.groupby("company_key").agg(
+        filing_count=("company_key", "size"),
+        first_application_date_calc=("application_date_dt", "min"),
+        latest_application_date_calc=("application_date_dt", "max"),
+        has_lapsed_history=("application_status", lambda s: any(status_is_lapsed(x) for x in s)),
+    )
+    latest_idx = history.sort_values(["company_key", "application_date_dt", "status_rank"], ascending=[True, False, False]).groupby("company_key").head(1).index
+    latest = history.loc[latest_idx].copy().set_index("company_key")
+    latest = latest.join(counts, how="left").reset_index()
+    latest["filing_count"] = latest["filing_count"].fillna(1).astype(int)
+    latest["first_application_date_calc"] = pd.to_datetime(latest["first_application_date_calc"], errors="coerce")
+    latest["latest_application_date_calc"] = pd.to_datetime(latest["latest_application_date_calc"], errors="coerce")
+    latest["has_lapsed_history"] = latest["has_lapsed_history"].fillna(False)
+    latest["status_note_cn"] = latest.apply(lambda r: ("曾失效后重新递表" if bool(r.get("has_lapsed_history")) and int(r.get("filing_count",1)) >= 2 and not status_is_lapsed(r.get("application_status")) else ("最新申请失效，等待是否重新递表" if status_is_lapsed(r.get("application_status")) else ("多次递表，需关注前次问询/财务更新" if int(r.get("filing_count",1)) >= 2 else "申请进展正常跟踪"))), axis=1)
+    latest["status_note_en"] = latest.apply(lambda r: ("Refiled after lapse" if bool(r.get("has_lapsed_history")) and int(r.get("filing_count",1)) >= 2 and not status_is_lapsed(r.get("application_status")) else ("Latest filing lapsed; wait for refiling" if status_is_lapsed(r.get("application_status")) else ("Multiple filings; check previous questions / financial updates" if int(r.get("filing_count",1)) >= 2 else "Normal filing progress tracking"))), axis=1)
+    return latest, history
 
 
 def enrich_dynamic(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
@@ -327,6 +660,10 @@ def enrich_dynamic(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
         out["investment_tier_cn"] = out.get("overall_score", pd.Series(np.nan, index=out.index)).map(lambda x: "A 重点参与" if pd.notna(x) and x >= 75 else "B 交易观察" if pd.notna(x) and x >= 60 else "C 等待触发" if pd.notna(x) and x >= 45 else "D 回避/仅跟踪")
     if "investment_tier_en" not in out.columns:
         out["investment_tier_en"] = out.get("overall_score", pd.Series(np.nan, index=out.index)).map(lambda x: "A Priority Participate" if pd.notna(x) and x >= 75 else "B Trading Watch" if pd.notna(x) and x >= 60 else "C Wait for Trigger" if pd.notna(x) and x >= 45 else "D Avoid / Track only")
+
+    # A1 project-quality score is about future IPO participation potential, not application progress.
+    out = build_a1_quality_scores(out)
+    out = add_current_status(out)
     return out
 
 
@@ -342,7 +679,7 @@ def display_table(df: pd.DataFrame, lang: str, cols: list[str] | None = None, he
         if c in out.columns: out[c] = out[c].map(fmt_pct)
     for c in ["gray_open_ret_pct", "gray_close_ret_pct", "d1_open_ret_pct", "d1_close_ret_pct", "one_lot_success_rate_pct"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct_raw)
-    for c in ["overall_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "custom_score", "margin_multiple", "public_subscription_multiple", "public_subscription_multiple_ballot", "cornerstone_value_to_avg20_turnover"]:
+    for c in ["overall_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score", "custom_score", "margin_multiple", "public_subscription_multiple", "public_subscription_multiple_ballot", "cornerstone_value_to_avg20_turnover"]:
         if c in out.columns: out[c] = out[c].map(lambda x: fmt_num(x, 1))
     for c in ["cornerstone_amount_hkd", "margin_amount_hkd", "avg20_trading_value_hkd_est"]:
         if c in out.columns: out[c] = out[c].map(fmt_money)
@@ -406,7 +743,16 @@ def make_memo(row: pd.Series, lang: str) -> str:
 - 买入触发：{g('buy_trigger')}
 - 卖点/风控：{g('sell_trigger')}
 
-## 二、项目阶段与发行结构
+## 二、A1项目质量与当前阶段
+- A1项目质量分：{g('a1_quality_score')}
+- 研究优先级：{g('a1_research_priority_cn')}
+- 未来IPO参与倾向：{g('future_ipo_participation_cn')}
+- 当前投资状态：{g('current_investment_status_cn')}
+- 下一动作：{g('next_action_cn')}
+- 加分原因：{g('a1_positive_reasons_cn')}
+- 扣分/不确定性：{g('a1_negative_reasons_cn')}
+
+## 三、项目阶段与发行结构
 - 生命周期阶段：{g('lifecycle_stage')}
 - 申请状态：{g('application_status')}
 - 上市日：{g('listing_date')}
@@ -416,7 +762,7 @@ def make_memo(row: pd.Series, lang: str) -> str:
 - 一手中签率：{g('one_lot_success_rate_pct')}
 - 孖展倍数：{g('margin_multiple')}
 
-## 三、基石、投行与解禁
+## 四、基石、投行与解禁
 - 基石数量：{g('cornerstone_count')}
 - 基石金额：{g('cornerstone_amount_hkd')}
 - 主要基石：{g('cornerstone_top_names')}
@@ -427,7 +773,7 @@ def make_memo(row: pd.Series, lang: str) -> str:
 - 解禁压力：{g('lockup_pressure_cn')}
 - 解禁提示：{g('lockup_action_cn')}
 
-## 四、暗盘与上市后路径
+## 五、暗盘与上市后路径
 - 暗盘开盘：{g('gray_open_ret_pct')}
 - 暗盘收盘：{g('gray_close_ret_pct')}
 - 首日收盘收益：{g('d1_close_ret')}
@@ -438,7 +784,7 @@ def make_memo(row: pd.Series, lang: str) -> str:
 - 路径标签：{g('path_label')}
 - 行情状态：{g('quote_status')}
 
-## 五、业务简介与募资用途
+## 六、业务简介与募资用途
 ### 业务简介
 {g('business_scope')}
 
@@ -458,7 +804,16 @@ Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 - Buy Trigger: {g('buy_trigger')}
 - Sell / Risk Control: {g('sell_trigger')}
 
-## 2. Stage and Deal Structure
+## 2. A1 Project Quality and Current Stage
+- A1 Project Quality Score: {g('a1_quality_score')}
+- Research Priority: {g('a1_research_priority_en')}
+- Future IPO Participation Bias: {g('future_ipo_participation_en')}
+- Current Investment Status: {g('current_investment_status_en')}
+- Next Action: {g('next_action_en')}
+- Positive Reasons: {g('a1_positive_reasons_en')}
+- Negative / Uncertain Factors: {g('a1_negative_reasons_en')}
+
+## 3. Stage and Deal Structure
 - Lifecycle Stage: {g('lifecycle_stage')}
 - Application Status: {g('application_status')}
 - Listing Date: {g('listing_date')}
@@ -468,7 +823,7 @@ Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 - One-lot Success Rate: {g('one_lot_success_rate_pct')}
 - Margin Multiple: {g('margin_multiple')}
 
-## 3. Cornerstone, Syndicate and Lock-up
+## 4. Cornerstone, Syndicate and Lock-up
 - Cornerstone Count: {g('cornerstone_count')}
 - Cornerstone Amount: {g('cornerstone_amount_hkd')}
 - Major Cornerstones: {g('cornerstone_top_names')}
@@ -479,7 +834,7 @@ Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 - Lock-up Pressure: {g('lockup_pressure_en')}
 - Lock-up Action: {g('lockup_action_en')}
 
-## 4. Gray Market and Post-listing Path
+## 5. Gray Market and Post-listing Path
 - Gray Open: {g('gray_open_ret_pct')}
 - Gray Close: {g('gray_close_ret_pct')}
 - D1 Close Return: {g('d1_close_ret')}
@@ -490,7 +845,7 @@ Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 - Path Label: {g('path_label')}
 - Quote Status: {g('quote_status')}
 
-## 5. Business Scope and Use of Proceeds
+## 6. Business Scope and Use of Proceeds
 ### Business Scope
 {g('business_scope')}
 
@@ -543,7 +898,9 @@ if query:
     mask = view.get("code", pd.Series("", index=view.index)).astype(str).str.lower().str.contains(q, na=False) | view.get("name", pd.Series("", index=view.index)).astype(str).str.lower().str.contains(q, na=False)
     view = view[mask]
 
-listed_mask = pool.get("listing_date", pd.Series(pd.NaT, index=pool.index)).notna()
+listing_dates_for_mask = pd.to_datetime(pool.get("listing_date", pd.Series(pd.NaT, index=pool.index)), errors="coerce")
+today_for_mask = pd.Timestamp.today().normalize()
+listed_mask = listing_dates_for_mask.notna() & (listing_dates_for_mask <= today_for_mask)
 a1_mask = pool.get("application_date", pd.Series(pd.NaT, index=pool.index)).notna() & ~listed_mask
 high_lock = pool.get("lockup_pressure_cn", pd.Series("", index=pool.index)).isin(["高", "中"]) & (to_num(pool.get("days_to_unlock", pd.Series(np.nan, index=pool.index))) <= 90)
 
@@ -555,38 +912,100 @@ if page == "dashboard":
     c4.metric(tr(lang, "metric_high_lockup"), int(high_lock.sum()))
     c5.metric(tr(lang, "metric_avg"), fmt_num(to_num(view.get("overall_score", pd.Series(dtype=float))).mean(), 1))
     st.subheader(tr(lang, "decision_pool"))
-    cols = [tier_col, "code", "name", "lifecycle_stage", "listing_date", "industry_level_1", "overall_score", "primary_recommendation", "secondary_recommendation", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "final_recommendation"]
+    cols = [tier_col, "current_investment_status_cn" if lang == "中文" else "current_investment_status_en", "code", "name", "lifecycle_stage", "listing_date", "industry_level_1", "overall_score", "a1_quality_score", "future_ipo_participation_cn" if lang == "中文" else "future_ipo_participation_en", "primary_recommendation", "secondary_recommendation", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "next_action_cn" if lang == "中文" else "next_action_en"]
     display_table(view.sort_values("overall_score", ascending=False, na_position="last"), lang, cols, 560)
     download_button(view, "investment_decision_pool.csv", lang)
 
 elif page == "a1":
     st.subheader(T["pages"]["a1"])
     if lang == "中文":
-        st.info("A1阶段不直接给买入建议，重点是研究优先级、额度准备和下一事件跟踪。")
+        st.info("A1项目观察池只保留尚未上市公司；评分衡量未来IPO是否值得重点参与，申请状态只作为项目管理信息，不进入项目质量分。")
     else:
-        st.info("The A1 stage does not produce a buy recommendation; it ranks research priority, allocation preparation and next-event monitoring.")
-    a1 = view[view.get("application_date", pd.Series(pd.NaT, index=view.index)).notna()].copy()
-    cols = ["a1_priority_cn" if lang == "中文" else "a1_priority_en", "temp_code", "code", "name", "application_date", "first_application_date", "hearing_date", "application_status", "a1_score", "sponsor", "overall_coordinator", "industry_level_1", "business_scope", "a1_action_cn" if lang == "中文" else "a1_action_en"]
-    display_table(a1.sort_values("a1_score", ascending=False, na_position="last"), lang, cols, 620)
-    with st.expander(tr(lang, "standards"), expanded=True):
+        st.info("The A1 watchlist only includes unlisted companies. The score measures future IPO participation potential; filing status is project-management information and is not part of project quality.")
+
+    a1_company, a1_history = build_a1_company_view(view)
+    if a1_company.empty:
+        st.info(tr(lang, "empty"))
+    else:
+        show_all_lapsed = st.checkbox("显示长期失效历史项目" if lang == "中文" else "Show long-lapsed historical projects", value=False)
+        latest_dt = pd.to_datetime(a1_company.get("latest_application_date_calc"), errors="coerce")
+        status_ser0 = a1_company.get("application_status", pd.Series("", index=a1_company.index)).astype(str)
+        long_lapsed_mask = status_ser0.map(status_is_lapsed) & latest_dt.notna() & (latest_dt < pd.Timestamp.today().normalize() - pd.DateOffset(months=24))
+        hidden_count = int(long_lapsed_mask.sum())
+        if not show_all_lapsed:
+            a1_company = a1_company[~long_lapsed_mask].copy()
+            if hidden_count:
+                st.caption((f"已默认隐藏 {hidden_count} 个长期失效历史项目；勾选上方选项可查看全部。" if lang == "中文" else f"{hidden_count} long-lapsed historical projects are hidden by default; tick above to show all."))
+        tab_all, tab_active, tab_lapsed, tab_multi = st.tabs(["全部未上市项目" if lang == "中文" else "All Unlisted", "活跃申请" if lang == "中文" else "Active Filings", "失效观察" if lang == "中文" else "Lapsed Watch", "多次递表" if lang == "中文" else "Multiple Filings"])
+        status_ser = a1_company.get("application_status", pd.Series("", index=a1_company.index)).astype(str)
+        lapsed_mask = status_ser.map(status_is_lapsed)
+        active_mask = ~lapsed_mask
+        multi_mask = to_num(a1_company.get("filing_count", pd.Series(1, index=a1_company.index))).fillna(1) >= 2
+        base_cols = [
+            "a1_research_priority_cn" if lang == "中文" else "a1_research_priority_en",
+            "future_ipo_participation_cn" if lang == "中文" else "future_ipo_participation_en",
+            "current_investment_status_cn" if lang == "中文" else "current_investment_status_en",
+            "temp_code", "code", "name", "application_status", "filing_count", "latest_application_date_calc", "first_application_date_calc",
+            "status_note_cn" if lang == "中文" else "status_note_en",
+            "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score",
+            "industry_level_1", "sponsor", "overall_coordinator", "next_action_cn" if lang == "中文" else "next_action_en"
+        ]
+        with tab_all:
+            display_table(a1_company.sort_values("a1_quality_score", ascending=False, na_position="last"), lang, base_cols, 580)
+        with tab_active:
+            display_table(a1_company[active_mask].sort_values("a1_quality_score", ascending=False, na_position="last"), lang, base_cols, 580)
+        with tab_lapsed:
+            display_table(a1_company[lapsed_mask].sort_values("a1_quality_score", ascending=False, na_position="last"), lang, base_cols, 580)
+        with tab_multi:
+            display_table(a1_company[multi_mask].sort_values("a1_quality_score", ascending=False, na_position="last"), lang, base_cols, 580)
+
+        st.markdown("### " + ("单个项目评分拆解与申请记录" if lang == "中文" else "Single-project Score Breakdown & Filing History"))
+        options = (a1_company.get("name", pd.Series("", index=a1_company.index)).astype(str) + " | " + a1_company.get("temp_code", pd.Series("", index=a1_company.index)).astype(str)).tolist()
+        selected_a1 = st.selectbox("选择项目" if lang == "中文" else "Select project", options)
+        if selected_a1:
+            sel_name = selected_a1.split(" | ")[0]
+            row = a1_company[a1_company["name"].astype(str) == sel_name].iloc[0]
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("A1项目质量分" if lang == "中文" else "A1 Quality Score", fmt_num(row.get("a1_quality_score"), 1))
+            m2.metric("研究优先级" if lang == "中文" else "Research Priority", row.get("a1_research_priority_cn" if lang == "中文" else "a1_research_priority_en", ""))
+            m3.metric("未来参与倾向" if lang == "中文" else "Future Participation Bias", row.get("future_ipo_participation_cn" if lang == "中文" else "future_ipo_participation_en", ""))
+            m4.metric("递表次数" if lang == "中文" else "Filing Count", int(row.get("filing_count", 1)) if pd.notna(row.get("filing_count")) else 1)
+            breakdown = pd.DataFrame({
+                ("维度" if lang == "中文" else "Dimension"): [
+                    "行业与港股市场偏好" if lang == "中文" else "Sector & HK Market Preference",
+                    "公司稀缺性与基本面潜力" if lang == "中文" else "Scarcity & Fundamental Potential",
+                    "保荐人/中介质量" if lang == "中文" else "Sponsor / Intermediary Quality",
+                    "历史同类IPO表现" if lang == "中文" else "Comparable IPO Performance",
+                    "未来交易可做性" if lang == "中文" else "Future Tradability",
+                    "当前市场窗口" if lang == "中文" else "Current Market Window",
+                ],
+                ("默认权重" if lang == "中文" else "Default Weight"): ["35%", "20%", "15%", "15%", "10%", "5%"],
+                ("得分" if lang == "中文" else "Score"): [
+                    fmt_num(row.get("a1_industry_preference_score"), 1), fmt_num(row.get("a1_company_quality_score"), 1), fmt_num(row.get("a1_sponsor_quality_score"), 1),
+                    fmt_num(row.get("a1_peer_ipo_score"), 1), fmt_num(row.get("a1_tradability_score"), 1), fmt_num(row.get("a1_market_window_score"), 1),
+                ]
+            })
+            st.dataframe(breakdown, use_container_width=True, hide_index=True)
+            cadd, csub = st.columns(2)
+            with cadd:
+                st.write("加分原因" if lang == "中文" else "Positive Reasons")
+                st.success(row.get("a1_positive_reasons_cn" if lang == "中文" else "a1_positive_reasons_en", ""))
+            with csub:
+                st.write("扣分/不确定性" if lang == "中文" else "Negative / Uncertain Factors")
+                st.warning(row.get("a1_negative_reasons_cn" if lang == "中文" else "a1_negative_reasons_en", ""))
+            st.write(("状态提示：" if lang == "中文" else "Status note: ") + str(row.get("status_note_cn" if lang == "中文" else "status_note_en", "")))
+            st.write(("下一动作：" if lang == "中文" else "Next action: ") + str(row.get("next_action_cn" if lang == "中文" else "next_action_en", "")))
+            key = row.get("company_key")
+            hist = a1_history[a1_history["company_key"] == key].copy() if "company_key" in a1_history.columns else pd.DataFrame()
+            with st.expander("查看完整申请记录" if lang == "中文" else "View full filing history", expanded=False):
+                hcols = ["temp_code", "code", "name", "application_date", "application_status", "status_update_date", "hearing_date", "sponsor", "overall_coordinator"]
+                display_table(hist.sort_values("application_date_dt", ascending=False, na_position="last"), lang, hcols, 260)
+
+    with st.expander("本页和评分标准页的关系" if lang == "中文" else "How this page relates to Scoring Standards", expanded=False):
         if lang == "中文":
-            st.markdown("""
-| 档位 | 定义 | 动作 |
-|---|---|---|
-| A 重点跟踪 | 已通过聆讯或项目推进度高，保荐/中介完整，业务简介清晰 | 立即建档，安排行业与公司研究，提前关注额度 |
-| B 研究池 | 处理中且资料较完整，行业或中介有一定看点 | 等招股书、估值区间和发行结构 |
-| C 观察 | 申请进展一般或信息不完整 | 保留观察，等待聆讯或结构改善 |
-| D 暂不覆盖 | 失效、撤回、信息缺失或可交易性差 | 除非后续重新递表并改善，否则不投入资源 |
-""")
+            st.markdown("A1项目观察池是**应用页面**：展示每个未上市项目的结果、拆解和下一动作。完整的维度定义、档位和可调权重集中在 **⑦ 评分标准与权重设置**，避免重复。")
         else:
-            st.markdown("""
-| Tier | Definition | Action |
-|---|---|---|
-| A High-priority watch | Hearing passed or advanced process; complete syndicate; clear business profile | Open research file and prepare allocation discussion |
-| B Research pool | Active filing with adequate information and some sector/syndicate merit | Wait for prospectus, valuation range and deal structure |
-| C Monitor | Limited progress or incomplete information | Monitor until hearing or structure improves |
-| D No active coverage | Lapsed/withdrawn, missing information or weak tradability | No resource allocation unless refiling improves |
-""")
+            st.markdown("The A1 Watchlist is an **application page**: it shows project-level results, breakdown and next actions. Full dimension definitions, tiers and adjustable weights are centralized in **⑦ Scoring Standards & Weights** to avoid duplication.")
 
 elif page == "ipo":
     st.subheader(T["pages"]["ipo"])
@@ -753,6 +1172,47 @@ elif page == "weights":
 | 45-60 | C Wait for Trigger | Incomplete information or mixed signals; wait for key events |
 | 0-45 | D Avoid / Track only | Clear risks or missing data; no active participation |
 """)
+
+
+    st.markdown("---")
+    st.markdown("### " + ("A1早期项目评分：标准与自定义权重" if lang == "中文" else "A1 Early-project Scoring: Standards & Custom Weights"))
+    if lang == "中文":
+        st.caption("A1项目质量分用于判断公司未来IPO是否值得重点参与；申请状态、失效和多次递表仅作为项目管理信息，不进入项目质量分。")
+    else:
+        st.caption("The A1 quality score estimates future IPO participation potential. Filing status, lapse and refiling history are project-management information and are not included in project-quality scoring.")
+    a1_dims = [
+        ("industry", "行业与港股市场偏好", "Sector & HK Market Preference", 35),
+        ("company", "公司稀缺性与基本面潜力", "Scarcity & Fundamental Potential", 20),
+        ("sponsor", "保荐人/中介质量", "Sponsor / Intermediary Quality", 15),
+        ("peer", "历史同类IPO表现", "Comparable IPO Performance", 15),
+        ("tradability", "未来交易可做性", "Future Tradability", 10),
+        ("market", "当前市场窗口", "Current Market Window", 5),
+    ]
+    a1_cols = st.columns(2)
+    a1_weights = {}
+    for i, (key, zh, en, default) in enumerate(a1_dims):
+        with a1_cols[i % 2]:
+            a1_weights[key] = st.slider(zh if lang == "中文" else en, 0, 60, default, 1, key=f"a1w_{key}")
+    a1_total = sum(a1_weights.values()) or 1
+    a1_weight_table = pd.DataFrame({
+        "维度" if lang == "中文" else "Dimension": [zh if lang == "中文" else en for _, zh, en, _ in a1_dims],
+        "当前权重" if lang == "中文" else "Current Weight": [f"{a1_weights[k]/a1_total*100:.1f}%" for k, _, _, _ in a1_dims],
+        "档位定义" if lang == "中文" else "Tier Definition": [
+            "强：近期同类IPO表现强、成交活跃、港股估值弹性高；弱：历史破发率高或关注度低" if lang == "中文" else "Strong: comparable IPOs show returns, liquidity and valuation elasticity; Weak: high break rate / low attention",
+            "强：稀缺龙头、成长性和商业模式清晰；弱：同质化、信息不足或基本面存疑" if lang == "中文" else "Strong: scarce leader, clear growth and business model; Weak: commoditized, insufficient data or questionable fundamentals",
+            "强：历史项目表现和销售能力优于市场；弱：历史破发率高或中介信息不足" if lang == "中文" else "Strong: historical projects and distribution above market; Weak: high break rate / insufficient sponsor data",
+            "强：同行业/同类型项目有赚钱效应；弱：同类项目长期弱势或流动性差" if lang == "中文" else "Strong: similar IPOs have money-making effect; Weak: similar projects are weak / illiquid",
+            "强：预计关注度、流通和成交可支持二级交易；弱：上市后可能无人交易" if lang == "中文" else "Strong: expected attention, float and turnover support secondary trading; Weak: likely illiquid after listing",
+            "强：近期新股赚钱效应强；弱：新股市场退潮" if lang == "中文" else "Strong: recent IPO market has positive return effect; Weak: IPO market cooling",
+        ]
+    })
+    st.dataframe(a1_weight_table, use_container_width=True, hide_index=True)
+    a1_custom_df = build_a1_quality_scores(view, a1_weights)
+    a1_custom_company, _ = build_a1_company_view(a1_custom_df)
+    st.markdown("#### " + ("按当前A1权重重算的未上市项目排名" if lang == "中文" else "Unlisted Project Ranking Recalculated with Current A1 Weights"))
+    if not a1_custom_company.empty:
+        cols_a1_live = ["a1_research_priority_cn" if lang == "中文" else "a1_research_priority_en", "future_ipo_participation_cn" if lang == "中文" else "future_ipo_participation_en", "temp_code", "code", "name", "application_status", "filing_count", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score"]
+        display_table(a1_custom_company.sort_values("a1_quality_score", ascending=False, na_position="last"), lang, cols_a1_live, 420)
 
 elif page == "backtest":
     st.subheader(T["pages"]["backtest"])
