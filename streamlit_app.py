@@ -211,9 +211,31 @@ def tr(lang: str, key: str):
     return TEXT[lang].get(key, key)
 
 
+def make_unique_columns(columns: list[str]) -> list[str]:
+    """Streamlit/pyarrow cannot render dataframes with duplicate column names.
+    Some bilingual labels intentionally map related raw fields to the same display name
+    (for example two versions of public subscription multiple). Add a short suffix
+    only when duplicates appear.
+    """
+    seen: dict[str, int] = {}
+    out: list[str] = []
+    for col in columns:
+        base = str(col)
+        if base not in seen:
+            seen[base] = 0
+            out.append(base)
+        else:
+            seen[base] += 1
+            out.append(f"{base} ({seen[base] + 1})")
+    return out
+
+
 def label_cols(df: pd.DataFrame, lang: str) -> pd.DataFrame:
     mapping = COL_ZH if lang == "中文" else COL_EN
-    return df.rename(columns={c: mapping.get(c, c) for c in df.columns})
+    out = df.copy()
+    out = out.rename(columns={c: mapping.get(c, c) for c in out.columns})
+    out.columns = make_unique_columns(list(out.columns))
+    return out
 
 
 @st.cache_data(show_spinner=False)
