@@ -213,7 +213,8 @@ COL_ZH.update({
     "decision_type_cn": "决策类型", "listed_age_bucket_cn": "上市分层", "listed_days": "上市天数",
     "quant_path_label_cn": "量化路径/状态", "relative_to_issue_pct": "较发行价", "last_close": "最近收盘",
     "last_quote_date": "最近行情日", "ret20_current": "近20日收益", "ret60_current": "近60日收益",
-    "drawdown_from_quote_high": "距行情高点回撤", "quote_freshness_note_cn": "行情提示",
+    "drawdown_from_quote_high": "距行情高点回撤", "quote_freshness_note_cn": "路径说明",
+    "quote_freshness_cn": "行情新鲜度", "score_confidence_cn": "评分置信度", "date_check_cn": "日期校验",
     "secondary_rating_cn": "二级评级", "secondary_action_cn": "二级操作建议",
 })
 COL_EN.update({
@@ -221,7 +222,8 @@ COL_EN.update({
     "decision_type_en": "Decision Type", "listed_age_bucket_en": "Listing-age Bucket", "listed_days": "Days Listed",
     "quant_path_label_en": "Quant Path / State", "relative_to_issue_pct": "Vs Issue Price", "last_close": "Last Close",
     "last_quote_date": "Last Quote Date", "ret20_current": "20D Return", "ret60_current": "60D Return",
-    "drawdown_from_quote_high": "Drawdown from Quote High", "quote_freshness_note_en": "Quote Note",
+    "drawdown_from_quote_high": "Drawdown from Quote High", "quote_freshness_note_en": "Path Note",
+    "quote_freshness_en": "Quote Freshness", "score_confidence_en": "Score Confidence", "date_check_en": "Date Check",
     "secondary_rating_en": "Secondary Rating", "secondary_action_en": "Secondary Action",
 })
 
@@ -283,15 +285,19 @@ def add_tradingview_links(df: pd.DataFrame) -> pd.DataFrame:
 def add_quote_current_metrics(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if quotes.empty or "code" not in quotes.columns:
-        for c in ["last_close", "last_quote_date", "ret20_current", "ret60_current", "drawdown_from_quote_high"]:
-            if c not in out.columns: out[c] = np.nan
+        for c in ["last_close", "last_quote_date", "ret20_current", "ret60_current", "drawdown_from_quote_high", "quote_freshness_cn", "quote_freshness_en"]:
+            if c not in out.columns:
+                out[c] = np.nan if c not in ["quote_freshness_cn", "quote_freshness_en"] else ("缺失" if c.endswith("cn") else "Missing")
         return out
     q = quotes.copy()
     q["date"] = pd.to_datetime(q.get("date"), errors="coerce")
     q["close"] = to_num(q.get("close", pd.Series(np.nan, index=q.index)))
     q = q.dropna(subset=["code", "date", "close"]).sort_values(["code", "date"])
     if q.empty:
+        for c in ["quote_freshness_cn", "quote_freshness_en"]:
+            out[c] = "缺失" if c.endswith("cn") else "Missing"
         return out
+    today = pd.Timestamp.today().normalize()
     rows = []
     for code, g in q.groupby("code"):
         g = g.sort_values("date")
@@ -300,6 +306,15 @@ def add_quote_current_metrics(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.Data
         c20 = float(g["close"].iloc[-21]) if len(g) >= 21 else np.nan
         c60 = float(g["close"].iloc[-61]) if len(g) >= 61 else np.nan
         high = float(g["close"].max()) if len(g) else np.nan
+        lag = (today - pd.to_datetime(last_date).normalize()).days if pd.notna(last_date) else np.nan
+        if pd.isna(lag):
+            qcn, qen = "缺失", "Missing"
+        elif lag <= 3:
+            qcn, qen = "正常", "Fresh"
+        elif lag <= 10:
+            qcn, qen = "轻微滞后", "Slightly stale"
+        else:
+            qcn, qen = "明显滞后", "Stale"
         rows.append({
             "code": code,
             "last_close": last_close,
@@ -307,6 +322,8 @@ def add_quote_current_metrics(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.Data
             "ret20_current": last_close / c20 - 1 if pd.notna(c20) and c20 else np.nan,
             "ret60_current": last_close / c60 - 1 if pd.notna(c60) and c60 else np.nan,
             "drawdown_from_quote_high": last_close / high - 1 if pd.notna(high) and high else np.nan,
+            "quote_freshness_cn": qcn,
+            "quote_freshness_en": qen,
         })
     m = pd.DataFrame(rows).set_index("code")
     if "code" in out.columns:
@@ -867,6 +884,37 @@ def build_a1_company_view(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
     latest["has_lapsed_history"] = latest["has_lapsed_history"].fillna(False)
     latest["status_note_cn"] = latest.apply(lambda r: ("曾失效后重新递表" if bool(r.get("has_lapsed_history")) and int(r.get("filing_count",1)) >= 2 and not status_is_lapsed(r.get("application_status")) else ("最新申请失效，等待是否重新递表" if status_is_lapsed(r.get("application_status")) else ("多次递表，需关注前次问询/财务更新" if int(r.get("filing_count",1)) >= 2 else "申请进展正常跟踪"))), axis=1)
     latest["status_note_en"] = latest.apply(lambda r: ("Refiled after lapse" if bool(r.get("has_lapsed_history")) and int(r.get("filing_count",1)) >= 2 and not status_is_lapsed(r.get("application_status")) else ("Latest filing lapsed; wait for refiling" if status_is_lapsed(r.get("application_status")) else ("Multiple filings; check previous questions / financial updates" if int(r.get("filing_count",1)) >= 2 else "Normal filing progress tracking"))), axis=1)
+
+    # Management-use confidence and date checks. These do not change project-quality scores.
+    completeness_cols = ["industry_level_1", "business_scope", "sponsor", "overall_coordinator", "application_status"]
+    def confidence_row(r):
+        present = 0
+        for c in completeness_cols:
+            v = r.get(c, "")
+            if pd.notna(v) and str(v).strip() not in ["", "--", "None", "nan"]:
+                present += 1
+        if pd.notna(r.get("a1_quality_score")):
+            present += 1
+        if present >= 5:
+            return ("高", "High")
+        if present >= 3:
+            return ("中", "Medium")
+        return ("低", "Low")
+    conf = latest.apply(confidence_row, axis=1)
+    latest["score_confidence_cn"] = [x[0] for x in conf]
+    latest["score_confidence_en"] = [x[1] for x in conf]
+    today = pd.Timestamp.today().normalize()
+    def date_check_row(r):
+        first = pd.to_datetime(r.get("first_application_date_calc"), errors="coerce")
+        latest_dt = pd.to_datetime(r.get("latest_application_date_calc"), errors="coerce")
+        if pd.notna(first) and pd.notna(latest_dt) and first > latest_dt:
+            return ("日期需复核：首次申请日晚于最近申请日", "Check dates: first filing is later than latest filing")
+        if pd.notna(latest_dt) and latest_dt > today + pd.DateOffset(days=60):
+            return ("日期需复核：最近申请日明显晚于当前日期", "Check dates: latest filing date is far in the future")
+        return ("正常", "OK")
+    dchk = latest.apply(date_check_row, axis=1)
+    latest["date_check_cn"] = [x[0] for x in dchk]
+    latest["date_check_en"] = [x[1] for x in dchk]
     return latest, history
 
 
@@ -984,21 +1032,38 @@ def display_table(df: pd.DataFrame, lang: str, cols: list[str] | None = None, he
         return
     out = df.copy()
     if cols is not None:
+        # TradingView is embedded into code/name cells, not displayed as a standalone column.
+        cols = [c for c in cols if c != "tradingview_url"]
         out = out[[c for c in cols if c in out.columns]]
+
+    # Make code/name clickable to TradingView for listed stocks. The URL carries a tv_display query
+    # parameter so Streamlit LinkColumn can display the code/name text instead of the raw URL.
+    tv_urls = df.get("tradingview_url", pd.Series("", index=df.index)).fillna("").astype(str)
+    if "code" in out.columns:
+        code_text = out["code"].fillna("").astype(str)
+        out["code"] = [f"{u}?tv_display={c}" if u and c else c for u, c in zip(tv_urls, code_text)]
+    if "name" in out.columns:
+        name_text = out["name"].fillna("").astype(str)
+        out["name"] = [f"{u}?tv_display={n}" if u and n else n for u, n in zip(tv_urls, name_text)]
+
     # format selected columns
     for c in ["d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "relative_to_issue_pct", "ret20_current", "ret60_current", "drawdown_from_quote_high"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct)
     for c in ["gray_open_ret_pct", "gray_close_ret_pct", "d1_open_ret_pct", "d1_close_ret_pct", "one_lot_success_rate_pct"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct_raw)
+    for c in ["首日均值", "二十日最大均值", "六十日最大均值", "一八零日最大均值", "二十日最小均值", "交易成功率", "强势或深V率", "坏路径率", "top_tradeable_20d_rate", "top_strong_or_deepv_rate", "top_bad_path_rate", "top_d1_mean", "top_max20_mean", "top_min20_mean"]:
+        if c in out.columns: out[c] = out[c].map(fmt_pct)
     for c in ["overall_score", "current_stage_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score", "custom_score", "margin_multiple", "public_subscription_multiple", "public_subscription_multiple_ballot", "cornerstone_value_to_avg20_turnover", "last_close"]:
         if c in out.columns: out[c] = out[c].map(lambda x: fmt_num(x, 1))
     for c in ["cornerstone_amount_hkd", "margin_amount_hkd", "avg20_trading_value_hkd_est"]:
         if c in out.columns: out[c] = out[c].map(fmt_money)
     labelled = label_cols(out, lang)
-    link_label = ("TradingView图表" if lang == "中文" else "TradingView Chart")
     column_config = {}
-    if link_label in labelled.columns:
-        column_config[link_label] = st.column_config.LinkColumn(link_label, display_text=("打开图表↗" if lang == "中文" else "Open chart ↗"))
+    code_label = "代码" if lang == "中文" else "Code"
+    name_label = "简称" if lang == "中文" else "Name"
+    for link_col in [code_label, name_label]:
+        if link_col in labelled.columns:
+            column_config[link_col] = st.column_config.LinkColumn(link_col, display_text=r"tv_display=([^&#]+)")
     st.dataframe(labelled, use_container_width=True, hide_index=True, height=height, column_config=column_config)
 
 
@@ -1199,23 +1264,38 @@ if refresh_seconds and page in ["dashboard", "post"]:
     components.html(f"<script>setTimeout(function(){{window.parent.location.reload();}}, {int(refresh_seconds)*1000});</script>", height=0)
 
 # Filters
+# Use page-aware source columns so the sidebar rating filter matches the displayed rating.
+filter_source = build_dashboard_view(pool, quotes) if page == "dashboard" else pool
 with st.sidebar.expander("筛选 / Filters", expanded=True):
     min_score = st.slider(tr(lang, "min_score"), 0, 100, 0, 5)
-    stage_vals = sorted([x for x in pool.get("lifecycle_stage", pd.Series(dtype=str)).dropna().astype(str).unique()])
+    stage_vals = sorted([x for x in filter_source.get("lifecycle_stage", pd.Series(dtype=str)).dropna().astype(str).unique()])
     stages = st.multiselect(tr(lang, "stage"), stage_vals, default=stage_vals)
-    tier_col = "investment_tier_cn" if lang == "中文" else "investment_tier_en"
-    tier_vals = sorted([x for x in pool.get(tier_col, pd.Series(dtype=str)).dropna().astype(str).unique()])
+    if page == "dashboard":
+        tier_col = "dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en"
+    elif page == "post":
+        tier_col = "secondary_rating_cn" if lang == "中文" else "secondary_rating_en"
+        if tier_col not in filter_source.columns:
+            tmp_post = build_secondary_view(pool, quotes)
+            tier_vals_source = tmp_post
+        else:
+            tier_vals_source = filter_source
+    else:
+        tier_col = "investment_tier_cn" if lang == "中文" else "investment_tier_en"
+        tier_vals_source = filter_source
+    if page != "post":
+        tier_vals_source = filter_source
+    tier_vals = sorted([x for x in tier_vals_source.get(tier_col, pd.Series(dtype=str)).dropna().astype(str).unique()])
     tiers = st.multiselect(tr(lang, "rating"), tier_vals, default=tier_vals)
-    ind_vals = sorted([x for x in pool.get("industry_level_1", pd.Series(dtype=str)).dropna().astype(str).unique()])
+    ind_vals = sorted([x for x in filter_source.get("industry_level_1", pd.Series(dtype=str)).dropna().astype(str).unique()])
     inds = st.multiselect(tr(lang, "industry"), ind_vals, default=[])
     query = st.text_input(tr(lang, "search"), "")
 
 view = pool.copy()
-if "overall_score" in view.columns:
+if "overall_score" in view.columns and page not in ["dashboard", "post"]:
     view = view[to_num(view["overall_score"]).fillna(0) >= min_score]
 if stages and "lifecycle_stage" in view.columns:
     view = view[view["lifecycle_stage"].astype(str).isin(stages)]
-if tiers and tier_col in view.columns:
+if tiers and tier_col in view.columns and page not in ["dashboard", "post"]:
     view = view[view[tier_col].astype(str).isin(tiers)]
 if inds and "industry_level_1" in view.columns:
     view = view[view["industry_level_1"].astype(str).isin(inds)]
@@ -1238,8 +1318,13 @@ if page == "dashboard":
         q = query.strip().lower()
         mask = dash_view.get("code", pd.Series("", index=dash_view.index)).astype(str).str.lower().str.contains(q, na=False) | dash_view.get("name", pd.Series("", index=dash_view.index)).astype(str).str.lower().str.contains(q, na=False)
         dash_view = dash_view[mask]
+    if stages and "lifecycle_stage" in dash_view.columns:
+        dash_view = dash_view[dash_view["lifecycle_stage"].astype(str).isin(stages)]
     if inds and "industry_level_1" in dash_view.columns:
         dash_view = dash_view[dash_view["industry_level_1"].astype(str).isin(inds)]
+    dash_rating_col = "dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en"
+    if tiers and dash_rating_col in dash_view.columns:
+        dash_view = dash_view[dash_view[dash_rating_col].astype(str).isin(tiers)]
     if "current_stage_score" in dash_view.columns:
         dash_view = dash_view[to_num(dash_view["current_stage_score"]).fillna(0) >= min_score]
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -1254,7 +1339,7 @@ if page == "dashboard":
         st.info("决策总览覆盖所有2024年后上市公司和未上市IPO流程公司；未上市公司评级代表项目质量/一级参与价值，已上市公司评级只代表当前二级交易决策。历史A1评分不在本页展示。")
     else:
         st.info("The dashboard covers all post-2024 listed companies and unlisted IPO-process companies. Unlisted ratings refer to project quality / primary participation value; listed ratings refer only to current secondary-market decisions. Historical A1 scores are not shown here.")
-    cols = ["dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en", "decision_type_cn" if lang == "中文" else "decision_type_en", "tradingview_url", "code", "name", "lifecycle_stage", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "listing_date", "industry_level_1", "current_stage_score", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "primary_recommendation", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "next_action_cn" if lang == "中文" else "next_action_en"]
+    cols = ["dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en", "decision_type_cn" if lang == "中文" else "decision_type_en", "tradingview_url", "code", "name", "lifecycle_stage", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "listing_date", "industry_level_1", "current_stage_score", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "next_action_cn" if lang == "中文" else "next_action_en"]
     display_table(dash_view.sort_values("current_stage_score", ascending=False, na_position="last"), lang, cols, 620)
     download_button(dash_view, "current_decision_dashboard.csv", lang)
 
@@ -1289,6 +1374,7 @@ elif page == "a1":
             "current_investment_status_cn" if lang == "中文" else "current_investment_status_en",
             "temp_code", "code", "name", "application_status", "filing_count", "latest_application_date_calc", "first_application_date_calc",
             "status_note_cn" if lang == "中文" else "status_note_en",
+            "score_confidence_cn" if lang == "中文" else "score_confidence_en", "date_check_cn" if lang == "中文" else "date_check_en",
             "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score",
             "industry_level_1", "sponsor", "overall_coordinator", "next_action_cn" if lang == "中文" else "next_action_en"
         ]
@@ -1351,12 +1437,28 @@ elif page == "a1":
 
 elif page == "ipo":
     st.subheader(T["pages"]["ipo"])
-    ipo = view[view.get("issue_price", pd.Series(np.nan, index=view.index)).notna() | view.get("offer_price_high", pd.Series(np.nan, index=view.index)).notna()].copy()
-    cols = ["dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en", "code", "name", "listing_date", "issue_price", "offer_price_low", "offer_price_high", "public_subscription_multiple", "public_subscription_multiple_ballot", "one_lot_success_rate_pct", "margin_multiple", "cornerstone_count", "cornerstone_amount_hkd", "primary_score", "primary_recommendation", "cornerstone_recommendation"]
-    # Dashboard ratings may not exist on raw view, so fall back to legacy tier if needed.
-    if ("dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en") not in ipo.columns:
-        cols[0] = tier_col
-    display_table(ipo.sort_values("primary_score", ascending=False, na_position="last"), lang, cols, 620)
+    ipo_all = view[view.get("issue_price", pd.Series(np.nan, index=view.index)).notna() | view.get("offer_price_high", pd.Series(np.nan, index=view.index)).notna()].copy()
+    if not ipo_all.empty:
+        ratings = [primary_rating(x) for x in to_num(ipo_all.get("primary_score", pd.Series(np.nan, index=ipo_all.index)))]
+        ipo_all["ipo_participation_rating_cn"] = [x[0] for x in ratings]
+        ipo_all["ipo_participation_rating_en"] = [x[1] for x in ratings]
+    listing_now = is_listed_mask(ipo_all) if not ipo_all.empty else pd.Series(dtype=bool)
+    current_ipo = ipo_all[~listing_now].copy() if len(ipo_all) else ipo_all
+    history_ipo = ipo_all[listing_now].copy() if len(ipo_all) else ipo_all
+    cols = ["ipo_participation_rating_cn" if lang == "中文" else "ipo_participation_rating_en", "code", "name", "listing_date", "issue_price", "offer_price_low", "offer_price_high", "public_subscription_multiple", "public_subscription_multiple_ballot", "one_lot_success_rate_pct", "margin_multiple", "cornerstone_count", "cornerstone_amount_hkd", "primary_score", "primary_recommendation", "cornerstone_recommendation"]
+    tab_cur, tab_hist = st.tabs(["当前招股/待上市项目" if lang == "中文" else "Current IPO / Pre-listing", "历史招股样本复盘" if lang == "中文" else "Historical IPO Review"])
+    with tab_cur:
+        if lang == "中文":
+            st.info("本页默认先看当前仍未上市、但已出现发行价/招股区间的项目；评级只代表招股期是否参与，不代表上市后二级买卖。")
+        else:
+            st.info("This tab focuses on current not-yet-listed projects with issue price / offer range. The rating is for IPO participation only, not secondary trading.")
+        display_table(current_ipo.sort_values("primary_score", ascending=False, na_position="last"), lang, cols, 560)
+    with tab_hist:
+        if lang == "中文":
+            st.info("历史样本用于复盘招股期评分的有效性，不代表当前仍可参与一级。")
+        else:
+            st.info("Historical samples are for reviewing IPO participation score effectiveness and do not imply current primary-market availability.")
+        display_table(history_ipo.sort_values("primary_score", ascending=False, na_position="last"), lang, cols, 560)
     with st.expander(tr(lang, "standards"), expanded=True):
         if lang == "中文":
             st.markdown("""
@@ -1443,7 +1545,12 @@ elif page == "post":
     if selected_buckets:
         bcol = "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en"
         post = post[post[bcol].isin(selected_buckets)]
-    cols = ["secondary_rating_cn" if lang == "中文" else "secondary_rating_en", "tradingview_url", "code", "name", "listing_date", "listed_days", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "issue_price", "last_close", "relative_to_issue_pct", "quote_rows", "quote_source", "last_quote_date", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "ret20_current", "ret60_current", "drawdown_from_quote_high", "current_stage_score", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "buy_trigger", "sell_trigger"]
+    post_rating_col = "secondary_rating_cn" if lang == "中文" else "secondary_rating_en"
+    if tiers and post_rating_col in post.columns:
+        post = post[post[post_rating_col].astype(str).isin(tiers)]
+    if "current_stage_score" in post.columns:
+        post = post[to_num(post["current_stage_score"]).fillna(0) >= min_score]
+    cols = ["secondary_rating_cn" if lang == "中文" else "secondary_rating_en", "code", "name", "listing_date", "listed_days", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "issue_price", "last_close", "relative_to_issue_pct", "quote_rows", "quote_source", "last_quote_date", "quote_freshness_cn" if lang == "中文" else "quote_freshness_en", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "ret20_current", "ret60_current", "drawdown_from_quote_high", "current_stage_score", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "buy_trigger", "sell_trigger"]
     display_table(post.sort_values("current_stage_score", ascending=False, na_position="last"), lang, cols, 680)
     with st.expander("量化路径定义" if lang == "中文" else "Quantitative Path Definitions", expanded=True):
         if lang == "中文":
@@ -1610,6 +1717,24 @@ elif page == "backtest":
         st.info("这个页面回答：高分组合是否更好、模型是否能避开破发、二级交易信号是否有用，以及失败样本在哪里。")
     else:
         st.info("This page answers whether high-score buckets perform better, whether the model avoids break-issue-price cases, whether secondary signals work, and where failures occur.")
+    # Plain-language conclusion first.
+    if not buckets.empty and "score_bucket" in buckets.columns:
+        def bucket_val(bucket, col):
+            r = buckets[buckets["score_bucket"].astype(str) == bucket]
+            if r.empty or col not in r.columns:
+                return np.nan
+            return pd.to_numeric(r[col].iloc[0], errors="coerce")
+        b20, c20, d20 = bucket_val("B", "二十日最大均值"), bucket_val("C", "二十日最大均值"), bucket_val("D", "二十日最大均值")
+        bbad, dbad = bucket_val("B", "坏路径率"), bucket_val("D", "坏路径率")
+        conclusions = []
+        if pd.notna(b20) and pd.notna(d20) and b20 > d20:
+            conclusions.append("高分组的20日最大收益高于D组，说明当前评分有一定筛选能力。" if lang == "中文" else "Higher-score buckets show better 20D upside than D bucket, suggesting useful selection value.")
+        if pd.notna(bbad) and pd.notna(dbad) and bbad < dbad:
+            conclusions.append("B组坏路径率低于D组，说明回避信号具备一定风控价值。" if lang == "中文" else "B bucket has a lower bad-path rate than D bucket, suggesting risk-control value.")
+        if bucket_val("A", "样本数") == 0:
+            conclusions.append("A组样本数为0，说明当前A档阈值偏严，可在后续权重校准中调整。" if lang == "中文" else "A bucket has zero samples, suggesting the A threshold may be too strict and should be calibrated later.")
+        if conclusions:
+            st.success(("模型有效性初步结论：" if lang == "中文" else "Initial effectiveness readout: ") + "；".join(conclusions))
     st.markdown("### " + ("评分分层表现" if lang == "中文" else "Score Bucket Performance"))
     display_table(buckets, lang, None, 240)
     if lang == "中文":
@@ -1677,6 +1802,15 @@ elif page == "quality":
             inv = inv[~inv["source_name"].isin(ex["source_name"])]
         inv = pd.concat([inv, ex], ignore_index=True)
     display_table(inv, lang, None, 360)
+    st.markdown("### " + ("管理层数据质量状态" if lang == "中文" else "Management Data Quality Status"))
+    status_rows = []
+    stale_col = "quote_freshness_cn" if lang == "中文" else "quote_freshness_en"
+    sec_quality = build_secondary_view(pool, quotes)
+    if not sec_quality.empty and stale_col in sec_quality.columns:
+        stale_count = int(sec_quality[stale_col].astype(str).isin(["明显滞后", "Stale", "缺失", "Missing"]).sum())
+        status_rows.append({"项目" if lang == "中文" else "Item": "行情新鲜度" if lang == "中文" else "Quote freshness", "状态" if lang == "中文" else "Status": "需复核" if stale_count else "可用", "说明" if lang == "中文" else "Description": (f"{stale_count} 只股票行情明显滞后或缺失，交易前需用TradingView/券商终端复核。" if stale_count else "主要二级交易池行情处于可用状态。")})
+    status_rows.append({"项目" if lang == "中文" else "Item": "回拨数据" if lang == "中文" else "Clawback data", "状态" if lang == "中文" else "Status": "缺失", "说明" if lang == "中文" else "Description": "iFind暂未提供结构化回拨统计，当前通过认购倍数/中签率/孖展和暗盘信号替代。" if lang == "中文" else "Structured clawback data is not currently available; subscription, ballot, margin and gray-market signals are used as substitutes."})
+    st.dataframe(pd.DataFrame(status_rows), use_container_width=True, hide_index=True)
     st.markdown("### " + ("重复公司/股票检查" if lang == "中文" else "Duplicate Company / Stock Check"))
     dup_rows = []
     if "code" in pool.columns:
