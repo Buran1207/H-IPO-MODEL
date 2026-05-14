@@ -1,48 +1,49 @@
-# 港股 IPO / 半新股投资决策系统
+# 港股 IPO / 二级交易投资决策系统
 
-面向港股 IPO 基金经理的全生命周期决策系统，覆盖：
+覆盖 2024 年以来港股 IPO 全生命周期：A1 未上市项目、招股期、暗盘/首日、以及所有 2024 年后上市公司的二级交易决策。
 
-- A1 / 未上市项目观察池
-- 招股期参与决策
-- 暗盘与首日交易
-- 上市后 0-180 日半新股状态机
-- 解禁与供给压力
-- 评分标准与权重设置
-- 回测与有效性验证
-- 单票投资备忘录
+## 本版核心口径
 
-## 本版核心更新
+- **决策总览**：显示所有 2024 年之后上市公司 + 当前进入 IPO 流程但未上市公司。
+- **未上市公司评级**：只代表 IPO 项目质量 / 未来参与价值。
+- **已上市公司评级**：只代表当前二级市场操作决策，不在总览中展示历史 A1 评分。
+- **二级市场交易状态机**：覆盖所有 2024+ 已上市公司，不再局限于上市后 180 天。
+- **A1 项目观察池**：只显示未上市公司；申请状态、多次递表、失效记录作为项目管理信息，不进入项目质量分。
+- **量化定义**：路径、回撤、显著高于、招股期参与标准均在页面中展示为量化阈值。
+- **TradingView 跳转**：已上市公司表格中提供 TradingView 图表入口。
 
-1. A1 项目观察池改为“公司维度”，同一家公司多次递表只显示最新状态，申请历史可展开查看。
-2. A1 观察池只保留尚未上市公司；已经上市的公司彻底移出 A1 页面，进入半新股/历史复盘体系。
-3. 失效但未上市项目继续保留；长期失效历史项目默认隐藏，可一键显示全部。
-4. A1 项目质量分不再由申请状态主导，也不包含申请历史风险。
-5. A1 默认评分权重：行业与港股市场偏好 35%、公司稀缺性与基本面潜力 20%、保荐/中介质量 15%、历史同类 IPO 表现 15%、未来交易可做性 10%、当前市场窗口 5%。
-6. 评分标准与权重设置页面集中展示 A1 评分规则和可调权重；A1 页面只展示项目结果、拆解和下一动作，避免重复。
-7. 决策总览新增“当前投资状态”，并把 C 细分为 C1-C6，例如 C1 等待发行资料、C6 失效观察。
+## 本地运行
 
-## 部署
-
-```bash
+```powershell
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-部署到 Streamlit Cloud 时，入口文件为：
+## 数据更新
+
+系统继续读取 `deploy_data/` 下的标准化 CSV。免费行情脚本现在默认抓取从上市日至今天的数据，兼容 0-180D 和 180D+ 二级交易池：
+
+```powershell
+python scripts/fetch_free_hk_quotes_180d.py --pool deploy_data/ipo_decision_pool.csv --out deploy_data/ipo_daily_quotes_180d.csv
+python scripts/build_post_listing_paths.py --update-pool
+```
+
+注：文件名保留 `ipo_daily_quotes_180d.csv` 是为了兼容旧版页面和脚本，但内容可以覆盖 180D 以后至最新日期的数据。
+
+## 部署
+
+上传以下内容到 GitHub 仓库根目录：
 
 ```text
 streamlit_app.py
+requirements.txt
+README.md
+.gitignore
+.streamlit/
+config/
+deploy_data/
+scripts/
+docs/
 ```
 
-## 数据文件
-
-主要展示文件位于 `deploy_data/`：
-
-- `ipo_investment_decision_scored.csv`：综合决策主表
-- `a1_project_watchlist_company_level.csv`：A1 公司维度观察池
-- `a1_application_history.csv`：A1 申请历史记录
-- `ipo_daily_quotes_180d.csv`：上市后 0-180 日行情
-- `ipo_post_listing_paths.csv`：上市后路径标签
-- `data_inventory.csv`：数据接入状态
-
-所有 CSV 均使用 `utf-8-sig` 编码，适配 GitHub、Streamlit 和 Excel。
+不要上传压缩包本身。

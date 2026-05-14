@@ -6,11 +6,12 @@ import json
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 BASE = Path("deploy_data")
 CONFIG = Path("config/weight_profiles.json")
 
-st.set_page_config(page_title="港股 IPO / 半新股投资决策系统", layout="wide")
+st.set_page_config(page_title="港股 IPO / 二级交易投资决策系统", layout="wide")
 
 
 def read_csv_any(path: Path) -> pd.DataFrame:
@@ -74,8 +75,8 @@ def fmt_money(x):
 
 TEXT = {
     "中文": {
-        "app_title": "港股 IPO / 半新股投资决策系统",
-        "caption": "覆盖 A1 项目、招股期、暗盘/首日、上市后0-180日、解禁与供给压力的全生命周期决策框架。",
+        "app_title": "港股 IPO / 二级交易投资决策系统",
+        "caption": "覆盖 A1 项目、招股期、暗盘/首日，以及所有2024年后上市公司的二级交易决策框架。",
         "language": "语言 / Language",
         "profile": "权重方案",
         "min_score": "最低综合分",
@@ -90,7 +91,7 @@ TEXT = {
             "a1": "② A1项目观察池",
             "ipo": "③ 招股期参与决策",
             "gray": "④ 暗盘与首日交易",
-            "post": "⑤ 半新股交易状态机",
+            "post": "⑤ 二级市场交易状态机",
             "lockup": "⑥ 解禁与供给压力",
             "weights": "⑦ 评分标准与权重设置",
             "backtest": "⑧ 回测与有效性验证",
@@ -99,7 +100,7 @@ TEXT = {
         },
         "metric_total": "样本数",
         "metric_a1": "A1/申请项目",
-        "metric_listed": "已上市/半新股",
+        "metric_listed": "2024+已上市",
         "metric_high_lockup": "90日内中高解禁压力",
         "metric_avg": "平均综合分",
         "decision_pool": "决策池",
@@ -112,8 +113,8 @@ TEXT = {
         "live_score": "按当前权重重算的排序",
     },
     "English": {
-        "app_title": "HK IPO & Newly Listed Equity Decision System",
-        "caption": "A full lifecycle decision framework covering A1 filings, IPO subscription, gray market/first day, post-listing 0-180D trading and lock-up pressure.",
+        "app_title": "HK IPO & Secondary Trading Decision System",
+        "caption": "A full lifecycle decision framework covering A1 filings, IPO subscription, gray market/first day and secondary trading for all companies listed since 2024.",
         "language": "Language / 语言",
         "profile": "Weight Profile",
         "min_score": "Minimum Score",
@@ -128,7 +129,7 @@ TEXT = {
             "a1": "② A1 Project Watchlist",
             "ipo": "③ IPO Participation Decision",
             "gray": "④ Gray Market & First Day",
-            "post": "⑤ Post-listing Trading State Machine",
+            "post": "⑤ Secondary-market Trading State Machine",
             "lockup": "⑥ Lock-up & Supply Pressure",
             "weights": "⑦ Scoring Standards & Weights",
             "backtest": "⑧ Backtest & Effectiveness",
@@ -137,7 +138,7 @@ TEXT = {
         },
         "metric_total": "Samples",
         "metric_a1": "A1 / Filing projects",
-        "metric_listed": "Listed / Newly listed",
+        "metric_listed": "2024+ Listed",
         "metric_high_lockup": "Medium/High lock-up pressure within 90D",
         "metric_avg": "Avg. score",
         "decision_pool": "Decision Pool",
@@ -207,6 +208,23 @@ COL_EN = {
 }
 
 
+COL_ZH.update({
+    "tradingview_url": "TradingView图表", "current_stage_score": "当前阶段分", "dashboard_rating_cn": "当前评级",
+    "decision_type_cn": "决策类型", "listed_age_bucket_cn": "上市分层", "listed_days": "上市天数",
+    "quant_path_label_cn": "量化路径/状态", "relative_to_issue_pct": "较发行价", "last_close": "最近收盘",
+    "last_quote_date": "最近行情日", "ret20_current": "近20日收益", "ret60_current": "近60日收益",
+    "drawdown_from_quote_high": "距行情高点回撤", "quote_freshness_note_cn": "行情提示",
+    "secondary_rating_cn": "二级评级", "secondary_action_cn": "二级操作建议",
+})
+COL_EN.update({
+    "tradingview_url": "TradingView Chart", "current_stage_score": "Current-stage Score", "dashboard_rating_en": "Current Rating",
+    "decision_type_en": "Decision Type", "listed_age_bucket_en": "Listing-age Bucket", "listed_days": "Days Listed",
+    "quant_path_label_en": "Quant Path / State", "relative_to_issue_pct": "Vs Issue Price", "last_close": "Last Close",
+    "last_quote_date": "Last Quote Date", "ret20_current": "20D Return", "ret60_current": "60D Return",
+    "drawdown_from_quote_high": "Drawdown from Quote High", "quote_freshness_note_en": "Quote Note",
+    "secondary_rating_en": "Secondary Rating", "secondary_action_en": "Secondary Action",
+})
+
 def tr(lang: str, key: str):
     return TEXT[lang].get(key, key)
 
@@ -235,6 +253,247 @@ def label_cols(df: pd.DataFrame, lang: str) -> pd.DataFrame:
     out = df.copy()
     out = out.rename(columns={c: mapping.get(c, c) for c in out.columns})
     out.columns = make_unique_columns(list(out.columns))
+    return out
+
+
+def is_listed_mask(df: pd.DataFrame) -> pd.Series:
+    listing = safe_date_series(df, "listing_date")
+    today = pd.Timestamp.today().normalize()
+    return listing.notna() & (listing <= today)
+
+
+def hk_tradingview_url(code: object) -> str:
+    if pd.isna(code):
+        return ""
+    c = str(code).strip().upper()
+    if not c or c.startswith("H") or ".HK" not in c:
+        return ""
+    sym = c.replace(".HK", "")
+    sym = sym.lstrip("0") or sym
+    return f"https://www.tradingview.com/symbols/HKEX-{sym}/"
+
+
+def add_tradingview_links(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if "code" in out.columns:
+        out["tradingview_url"] = out["code"].map(hk_tradingview_url)
+    return out
+
+
+def add_quote_current_metrics(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if quotes.empty or "code" not in quotes.columns:
+        for c in ["last_close", "last_quote_date", "ret20_current", "ret60_current", "drawdown_from_quote_high"]:
+            if c not in out.columns: out[c] = np.nan
+        return out
+    q = quotes.copy()
+    q["date"] = pd.to_datetime(q.get("date"), errors="coerce")
+    q["close"] = to_num(q.get("close", pd.Series(np.nan, index=q.index)))
+    q = q.dropna(subset=["code", "date", "close"]).sort_values(["code", "date"])
+    if q.empty:
+        return out
+    rows = []
+    for code, g in q.groupby("code"):
+        g = g.sort_values("date")
+        last_close = float(g["close"].iloc[-1]) if len(g) else np.nan
+        last_date = g["date"].iloc[-1] if len(g) else pd.NaT
+        c20 = float(g["close"].iloc[-21]) if len(g) >= 21 else np.nan
+        c60 = float(g["close"].iloc[-61]) if len(g) >= 61 else np.nan
+        high = float(g["close"].max()) if len(g) else np.nan
+        rows.append({
+            "code": code,
+            "last_close": last_close,
+            "last_quote_date": last_date,
+            "ret20_current": last_close / c20 - 1 if pd.notna(c20) and c20 else np.nan,
+            "ret60_current": last_close / c60 - 1 if pd.notna(c60) and c60 else np.nan,
+            "drawdown_from_quote_high": last_close / high - 1 if pd.notna(high) and high else np.nan,
+        })
+    m = pd.DataFrame(rows).set_index("code")
+    if "code" in out.columns:
+        for c in m.columns:
+            out[c] = out["code"].map(m[c])
+    return out
+
+
+def add_listing_age_and_path(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    today = pd.Timestamp.today().normalize()
+    listing = safe_date_series(out, "listing_date")
+    out["listed_days"] = (today - listing).dt.days
+    def age_cn(x):
+        if pd.isna(x): return "未上市"
+        if x <= 30: return "新上市观察期(0-30D)"
+        if x <= 180: return "半新股交易期(31-180D)"
+        return "次新延伸期(180D+)"
+    def age_en(x):
+        if pd.isna(x): return "Unlisted"
+        if x <= 30: return "New listing watch (0-30D)"
+        if x <= 180: return "Newly listed trading (31-180D)"
+        return "Extended post-IPO (180D+)"
+    out["listed_age_bucket_cn"] = out["listed_days"].map(age_cn)
+    out["listed_age_bucket_en"] = out["listed_days"].map(age_en)
+    issue = to_num(out.get("issue_price", pd.Series(np.nan, index=out.index)))
+    last = to_num(out.get("last_close", pd.Series(np.nan, index=out.index)))
+    out["relative_to_issue_pct"] = (last / issue - 1).replace([np.inf, -np.inf], np.nan)
+    d1 = to_num(out.get("d1_close_ret", pd.Series(np.nan, index=out.index)))
+    max20 = to_num(out.get("max_20_ret", pd.Series(np.nan, index=out.index)))
+    min20 = to_num(out.get("min_20_ret", pd.Series(np.nan, index=out.index)))
+    max60 = to_num(out.get("max_60_ret", pd.Series(np.nan, index=out.index)))
+    min60 = to_num(out.get("min_60_ret", pd.Series(np.nan, index=out.index)))
+    max180 = to_num(out.get("max_180_ret", pd.Series(np.nan, index=out.index)))
+    min180 = to_num(out.get("min_180_ret", pd.Series(np.nan, index=out.index)))
+    rel_issue = out["relative_to_issue_pct"]
+    ret20 = to_num(out.get("ret20_current", pd.Series(np.nan, index=out.index)))
+    ret60 = to_num(out.get("ret60_current", pd.Series(np.nan, index=out.index)))
+    dd_high = to_num(out.get("drawdown_from_quote_high", pd.Series(np.nan, index=out.index)))
+    labels_cn, labels_en, notes_cn, notes_en = [], [], [], []
+    qrows = to_num(out.get("quote_rows", pd.Series(np.nan, index=out.index))).fillna(0)
+    for idx, r in out.iterrows():
+        days = r.get("listed_days")
+        qr = qrows.loc[idx] if idx in qrows.index else 0
+        if pd.isna(days):
+            labels_cn.append("未上市"); labels_en.append("Unlisted"); notes_cn.append("未上市项目不适用二级路径"); notes_en.append("Secondary path not applicable to unlisted projects"); continue
+        if qr < 5:
+            labels_cn.append("数据不足/新上市观察"); labels_en.append("Insufficient data / new listing watch"); notes_cn.append("有效行情少于5行，暂不做路径结论"); notes_en.append("Fewer than 5 valid quote rows; no path conclusion yet"); continue
+        if days > 180:
+            li = r.get("relative_to_issue_pct")
+            r20 = r.get("ret20_current")
+            r60 = r.get("ret60_current")
+            dd = r.get("drawdown_from_quote_high")
+            if pd.notna(r60) and pd.notna(dd) and r60 >= 0.15 and dd > -0.20:
+                labels_cn.append("趋势延续"); labels_en.append("Trend continuation"); notes_cn.append("60日收益≥15%且距行情高点回撤<20%"); notes_en.append("60D return ≥15% and drawdown from quote high <20%")
+            elif pd.notna(dd) and dd > -0.15 and pd.notna(r20) and -0.10 <= r20 <= 0.10:
+                labels_cn.append("高位震荡"); labels_en.append("High-level consolidation"); notes_cn.append("距行情高点回撤<15%，20日收益在±10%内"); notes_en.append("Drawdown from quote high <15%, 20D return within ±10%")
+            elif pd.notna(li) and li >= 0 and (idx in min180.index) and pd.notna(min180.loc[idx]) and min180.loc[idx] <= -0.05:
+                labels_cn.append("长期破发修复"); labels_en.append("Long break-price recovery"); notes_cn.append("曾跌破发行价，当前重新高于发行价"); notes_en.append("Previously broke issue price, now above issue price")
+            elif pd.notna(li) and li <= -0.10 and (pd.isna(r60) or r60 < 0.15):
+                labels_cn.append("长期破发弱势"); labels_en.append("Long-term weak below issue price"); notes_cn.append("上市180日后仍低于发行价10%以上且反弹不足"); notes_en.append("After 180D still >10% below issue price with weak rebound")
+            elif pd.notna(dd) and dd <= -0.30:
+                labels_cn.append("高位回撤预警"); labels_en.append("High-level drawdown alert"); notes_cn.append("从行情高点回撤≥30%"); notes_en.append("Drawdown from quote high ≥30%")
+            else:
+                labels_cn.append("次新延伸观察"); labels_en.append("Extended post-IPO watch"); notes_cn.append("上市180日后继续按趋势、成交和解禁后再定价观察"); notes_en.append("After 180D, monitor trend, turnover and post-lock-up repricing")
+            continue
+        # 0-180D quantitative path rules
+        v_d1 = d1.loc[idx] if idx in d1.index else np.nan
+        v_max20 = max20.loc[idx] if idx in max20.index else np.nan
+        v_min20 = min20.loc[idx] if idx in min20.index else np.nan
+        v_max60 = max60.loc[idx] if idx in max60.index else np.nan
+        v_min60 = min60.loc[idx] if idx in min60.index else np.nan
+        v_rel = rel_issue.loc[idx] if idx in rel_issue.index else np.nan
+        if pd.notna(v_d1) and pd.notna(v_min20) and pd.notna(v_max20) and v_d1 >= 0.10 and v_min20 >= -0.05 and v_max20 >= 0.20:
+            labels_cn.append("上市即强势"); labels_en.append("Strong from listing"); notes_cn.append("首日收盘≥10%，20日低点不低于发行价-5%，20日最大涨幅≥20%"); notes_en.append("D1 close ≥10%, 20D low not below issue price -5%, 20D max gain ≥20%")
+        elif ((pd.notna(v_min20) and v_min20 <= -0.10) or (pd.notna(v_min60) and v_min60 <= -0.15)) and pd.notna(v_max60) and v_max60 >= 0.25 and pd.notna(v_rel) and v_rel >= 0:
+            labels_cn.append("深V反弹"); labels_en.append("Deep-V rebound"); notes_cn.append("20日最大跌幅≤-10%或60日压力≤-15%，之后60日最大反弹≥25%且站回发行价"); notes_en.append("20D drawdown ≤-10% or 60D pressure ≤-15%, later 60D rebound ≥25% and back above issue price")
+        elif pd.notna(v_max20) and v_max20 >= 0.15 and ((pd.notna(v_rel) and v_rel < 0) or (pd.notna(v_min60) and v_min60 <= -0.30)):
+            labels_cn.append("升后破发"); labels_en.append("Pump then break"); notes_cn.append("前20日最大涨幅≥15%，但之后跌破发行价或60日压力≤-30%"); notes_en.append("20D max gain ≥15%, then below issue price or 60D pressure ≤-30%")
+        elif ((pd.notna(v_d1) and v_d1 < 0) or (pd.notna(v_min20) and v_min20 <= -0.05)) and (pd.isna(v_rel) or v_rel < 0) and (pd.isna(v_max60) or v_max60 < 0.15):
+            labels_cn.append("一路破发"); labels_en.append("Persistent break issue price"); notes_cn.append("首日或20日内跌破发行价-5%，且60日最大反弹<15%/未站回发行价"); notes_en.append("Breaks issue price by D1/within 20D and 60D max rebound <15% / not back above issue price")
+        elif pd.notna(v_max20) and pd.notna(v_min20) and -0.10 <= (v_d1 if pd.notna(v_d1) else 0) <= 0.15 and v_min20 >= -0.15 and v_max20 <= 0.20:
+            labels_cn.append("温和交易型"); labels_en.append("Moderate trading path"); notes_cn.append("20日收益/波动未形成强趋势，最大回撤不超过15%、最大涨幅不超过20%"); notes_en.append("No strong trend in first 20D; max drawdown <=15% and max gain <=20%")
+        else:
+            labels_cn.append("观察中"); labels_en.append("Under observation"); notes_cn.append("未触发强势、深V、破发或升后破发的量化阈值"); notes_en.append("No quantitative threshold triggered for strong/deep-V/break/pump-then-break path")
+    out["quant_path_label_cn"] = labels_cn
+    out["quant_path_label_en"] = labels_en
+    out["quote_freshness_note_cn"] = notes_cn
+    out["quote_freshness_note_en"] = notes_en
+    return out
+
+
+def secondary_rating(score, lockup_cn=None):
+    if pd.isna(score):
+        return ("信息不足", "Insufficient data", "补充行情/成交数据", "Add quote / turnover data")
+    score = float(score)
+    if lockup_cn in ["高"] and score < 80:
+        return ("C5 等待风险释放", "C5 Wait for risk release", "解禁压力高，不追高，等待供给压力释放", "High lock-up pressure; avoid chasing until supply pressure clears")
+    if score >= 75:
+        return ("A 二级趋势确认", "A Secondary trend confirmed", "可参与；优先等回踩或成交确认", "Actionable; prefer pullback or turnover confirmation")
+    if score >= 60:
+        return ("B 二级交易观察", "B Secondary trading watch", "小仓或等待确认", "Small allocation or wait for confirmation")
+    if score >= 45:
+        return ("C4 等待二级买点", "C4 Wait for secondary entry", "不追高，等待深V、站回发行价或趋势确认", "Do not chase; wait for deep-V, reclaim of issue price or trend confirmation")
+    return ("D 破发/弱势回避", "D Avoid weak / broken structure", "二级结构弱，原则上回避", "Weak secondary structure; avoid by default")
+
+
+def build_secondary_view(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
+    d = add_quote_current_metrics(df.copy(), quotes)
+    d = add_listing_age_and_path(d)
+    d = add_tradingview_links(d)
+    d = d[is_listed_mask(d)].copy()
+    # The secondary trading universe is all companies listed from 2024 onward.
+    ld = safe_date_series(d, "listing_date")
+    d = d[ld >= pd.Timestamp("2024-01-01")].copy()
+    if d.empty:
+        return d
+    # prefer real listed codes and one row per listed stock
+    d["_code_key"] = d.get("code", pd.Series("", index=d.index)).astype(str).str.upper().str.strip()
+    d = d[d["_code_key"].ne("")].copy()
+    d["_score_sort"] = to_num(d.get("secondary_score", pd.Series(np.nan, index=d.index))).fillna(to_num(d.get("post_listing_score", pd.Series(np.nan, index=d.index))).fillna(0))
+    d["_date_sort"] = safe_date_series(d, "listing_date")
+    d = d.sort_values(["_code_key", "_date_sort", "_score_sort"], ascending=[True, False, False])
+    d = d.drop_duplicates("_code_key", keep="first").copy()
+    sec_score = to_num(d.get("secondary_score", pd.Series(np.nan, index=d.index))).fillna(to_num(d.get("post_listing_score", pd.Series(np.nan, index=d.index))))
+    d["current_stage_score"] = sec_score
+    ratings = [secondary_rating(sc, r.get("lockup_pressure_cn")) for sc, (_, r) in zip(sec_score, d.iterrows())]
+    d["secondary_rating_cn"] = [x[0] for x in ratings]
+    d["secondary_rating_en"] = [x[1] for x in ratings]
+    d["secondary_action_cn"] = [x[2] for x in ratings]
+    d["secondary_action_en"] = [x[3] for x in ratings]
+    return d.drop(columns=[c for c in ["_code_key", "_score_sort", "_date_sort"] if c in d.columns])
+
+
+def primary_rating(score):
+    if pd.isna(score): return ("C1 等待发行资料", "C1 Wait for deal terms")
+    score = float(score)
+    if score >= 80: return ("A 强参与", "A Strong participate")
+    if score >= 70: return ("B 小额/中等参与", "B Small / moderate participate")
+    if score >= 60: return ("C2 谨慎参与，等配发/暗盘", "C2 Cautious; wait for allotment/gray")
+    if score >= 50: return ("C3 只看二级", "C3 Secondary only")
+    return ("D 回避", "D Avoid")
+
+
+def a1_project_rating(score, status=None):
+    if status_is_lapsed(status):
+        return ("C6 失效观察", "C6 Lapsed filing watch")
+    if pd.isna(score): return ("C1 等待发行资料", "C1 Wait for deal terms")
+    score = float(score)
+    if score >= 80: return ("A 高质量IPO候选", "A High-quality IPO candidate")
+    if score >= 70: return ("B 值得研究", "B Worth research")
+    if score >= 60: return ("B- 可参与但需验证", "B- Participate only after validation")
+    if score >= 50: return ("C1 等待发行资料", "C1 Wait for deal terms")
+    return ("D 项目质量较弱", "D Low project quality")
+
+
+def build_dashboard_view(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
+    """One row per company/stock for the dashboard. Listed companies use secondary ratings only; unlisted companies use project/IPO-stage ratings."""
+    listed = build_secondary_view(df, quotes)
+    if not listed.empty:
+        listed["decision_type_cn"] = "二级交易"
+        listed["decision_type_en"] = "Secondary trading"
+        listed["dashboard_rating_cn"] = listed["secondary_rating_cn"]
+        listed["dashboard_rating_en"] = listed["secondary_rating_en"]
+        listed["current_stage_score"] = to_num(listed.get("current_stage_score", pd.Series(np.nan, index=listed.index)))
+        listed["next_action_cn"] = listed.get("secondary_action_cn", listed.get("next_action_cn", ""))
+        listed["next_action_en"] = listed.get("secondary_action_en", listed.get("next_action_en", ""))
+    a1_company, _ = build_a1_company_view(df)
+    unlisted = a1_company.copy()
+    if not unlisted.empty:
+        # If deal terms already exist, use IPO participation score; otherwise A1 quality score.
+        has_terms = to_num(unlisted.get("issue_price", pd.Series(np.nan, index=unlisted.index))).notna() | to_num(unlisted.get("offer_price_high", pd.Series(np.nan, index=unlisted.index))).notna()
+        unlisted["decision_type_cn"] = np.where(has_terms, "招股期参与", "A1项目质量")
+        unlisted["decision_type_en"] = np.where(has_terms, "IPO participation", "A1 project quality")
+        current_scores = to_num(unlisted.get("primary_score", pd.Series(np.nan, index=unlisted.index))).where(has_terms, to_num(unlisted.get("a1_quality_score", pd.Series(np.nan, index=unlisted.index))))
+        unlisted["current_stage_score"] = current_scores
+        dr_cn, dr_en = [], []
+        for i, r in unlisted.iterrows():
+            if has_terms.loc[i]:
+                cn, en = primary_rating(r.get("primary_score"))
+            else:
+                cn, en = a1_project_rating(r.get("a1_quality_score"), r.get("application_status"))
+            dr_cn.append(cn); dr_en.append(en)
+        unlisted["dashboard_rating_cn"] = dr_cn
+        unlisted["dashboard_rating_en"] = dr_en
+    out = pd.concat([listed, unlisted], ignore_index=True, sort=False)
+    out = add_tradingview_links(out)
     return out
 
 
@@ -727,15 +986,20 @@ def display_table(df: pd.DataFrame, lang: str, cols: list[str] | None = None, he
     if cols is not None:
         out = out[[c for c in cols if c in out.columns]]
     # format selected columns
-    for c in ["d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret"]:
+    for c in ["d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "relative_to_issue_pct", "ret20_current", "ret60_current", "drawdown_from_quote_high"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct)
     for c in ["gray_open_ret_pct", "gray_close_ret_pct", "d1_open_ret_pct", "d1_close_ret_pct", "one_lot_success_rate_pct"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct_raw)
-    for c in ["overall_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score", "custom_score", "margin_multiple", "public_subscription_multiple", "public_subscription_multiple_ballot", "cornerstone_value_to_avg20_turnover"]:
+    for c in ["overall_score", "current_stage_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score", "custom_score", "margin_multiple", "public_subscription_multiple", "public_subscription_multiple_ballot", "cornerstone_value_to_avg20_turnover", "last_close"]:
         if c in out.columns: out[c] = out[c].map(lambda x: fmt_num(x, 1))
     for c in ["cornerstone_amount_hkd", "margin_amount_hkd", "avg20_trading_value_hkd_est"]:
         if c in out.columns: out[c] = out[c].map(fmt_money)
-    st.dataframe(label_cols(out, lang), use_container_width=True, hide_index=True, height=height)
+    labelled = label_cols(out, lang)
+    link_label = ("TradingView图表" if lang == "中文" else "TradingView Chart")
+    column_config = {}
+    if link_label in labelled.columns:
+        column_config[link_label] = st.column_config.LinkColumn(link_label, display_text=("打开图表↗" if lang == "中文" else "Open chart ↗"))
+    st.dataframe(labelled, use_container_width=True, hide_index=True, height=height, column_config=column_config)
 
 
 def download_button(df: pd.DataFrame, name: str, lang: str):
@@ -751,7 +1015,7 @@ def make_custom_scores(df: pd.DataFrame, weights: dict[str, float]) -> pd.DataFr
         "基石质量": "cornerstone_score",
         "投行质量": "cornerstone_bank_score",
         "暗盘/首日": "gray_signal_score",
-        "上市后路径": "post_listing_score",
+        "上市后二级路径": "post_listing_score",
         "解禁安全": "lockup_safety_score",
         "解禁风险": "lockup_safety_score",
     }
@@ -782,7 +1046,7 @@ def make_memo(row: pd.Series, lang: str) -> str:
             return v.strftime("%Y-%m-%d")
         return v
     if lang == "中文":
-        return f"""# 港股 IPO / 半新股投资备忘录：{g('code')} {g('name')}
+        return f"""# 港股 IPO / 二级交易投资备忘录：{g('code')} {g('name')}
 
 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}
 
@@ -825,7 +1089,7 @@ def make_memo(row: pd.Series, lang: str) -> str:
 - 解禁压力：{g('lockup_pressure_cn')}
 - 解禁提示：{g('lockup_action_cn')}
 
-## 五、暗盘与上市后路径
+## 五、暗盘与上市后二级路径
 - 暗盘开盘：{g('gray_open_ret_pct')}
 - 暗盘收盘：{g('gray_close_ret_pct')}
 - 首日收盘收益：{g('d1_close_ret')}
@@ -924,6 +1188,16 @@ page = page_key_by_label[page_label]
 st.title(tr(lang, "app_title"))
 st.caption(tr(lang, "caption"))
 
+# Optional auto-refresh for listed-company pages. This refreshes the browser view; data updates when the underlying CSV/data source is refreshed.
+refresh_seconds = st.sidebar.selectbox(
+    "已上市行情刷新 / Listed quote refresh",
+    [0, 30, 60, 120, 300],
+    index=0,
+    format_func=lambda x: ("关闭" if x == 0 else f"{x}秒"),
+)
+if refresh_seconds and page in ["dashboard", "post"]:
+    components.html(f"<script>setTimeout(function(){{window.parent.location.reload();}}, {int(refresh_seconds)*1000});</script>", height=0)
+
 # Filters
 with st.sidebar.expander("筛选 / Filters", expanded=True):
     min_score = st.slider(tr(lang, "min_score"), 0, 100, 0, 5)
@@ -957,16 +1231,32 @@ a1_mask = pool.get("application_date", pd.Series(pd.NaT, index=pool.index)).notn
 high_lock = pool.get("lockup_pressure_cn", pd.Series("", index=pool.index)).isin(["高", "中"]) & (to_num(pool.get("days_to_unlock", pd.Series(np.nan, index=pool.index))) <= 90)
 
 if page == "dashboard":
+    dash = build_dashboard_view(pool, quotes)
+    # Apply dashboard-specific filters without mixing historical A1 quality into listed-company ratings.
+    dash_view = dash.copy()
+    if query:
+        q = query.strip().lower()
+        mask = dash_view.get("code", pd.Series("", index=dash_view.index)).astype(str).str.lower().str.contains(q, na=False) | dash_view.get("name", pd.Series("", index=dash_view.index)).astype(str).str.lower().str.contains(q, na=False)
+        dash_view = dash_view[mask]
+    if inds and "industry_level_1" in dash_view.columns:
+        dash_view = dash_view[dash_view["industry_level_1"].astype(str).isin(inds)]
+    if "current_stage_score" in dash_view.columns:
+        dash_view = dash_view[to_num(dash_view["current_stage_score"]).fillna(0) >= min_score]
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric(tr(lang, "metric_total"), len(view))
-    c2.metric(tr(lang, "metric_a1"), int(a1_mask.sum()))
-    c3.metric(tr(lang, "metric_listed"), int(listed_mask.sum()))
-    c4.metric(tr(lang, "metric_high_lockup"), int(high_lock.sum()))
-    c5.metric(tr(lang, "metric_avg"), fmt_num(to_num(view.get("overall_score", pd.Series(dtype=float))).mean(), 1))
+    listed_dash = is_listed_mask(dash_view) if not dash_view.empty else pd.Series(dtype=bool)
+    c1.metric(tr(lang, "metric_total"), len(dash_view))
+    c2.metric(tr(lang, "metric_a1"), int((~listed_dash).sum()) if len(dash_view) else 0)
+    c3.metric(tr(lang, "metric_listed"), int(listed_dash.sum()) if len(dash_view) else 0)
+    c4.metric(tr(lang, "metric_high_lockup"), int((dash_view.get("lockup_pressure_cn", pd.Series("", index=dash_view.index)).isin(["高", "中"]) & (to_num(dash_view.get("days_to_unlock", pd.Series(np.nan, index=dash_view.index))) <= 90)).sum()) if len(dash_view) else 0)
+    c5.metric("平均当前阶段分" if lang == "中文" else "Avg current-stage score", fmt_num(to_num(dash_view.get("current_stage_score", pd.Series(dtype=float))).mean(), 1))
     st.subheader(tr(lang, "decision_pool"))
-    cols = [tier_col, "current_investment_status_cn" if lang == "中文" else "current_investment_status_en", "code", "name", "lifecycle_stage", "listing_date", "industry_level_1", "overall_score", "a1_quality_score", "future_ipo_participation_cn" if lang == "中文" else "future_ipo_participation_en", "primary_recommendation", "secondary_recommendation", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "next_action_cn" if lang == "中文" else "next_action_en"]
-    display_table(view.sort_values("overall_score", ascending=False, na_position="last"), lang, cols, 560)
-    download_button(view, "investment_decision_pool.csv", lang)
+    if lang == "中文":
+        st.info("决策总览覆盖所有2024年后上市公司和未上市IPO流程公司；未上市公司评级代表项目质量/一级参与价值，已上市公司评级只代表当前二级交易决策。历史A1评分不在本页展示。")
+    else:
+        st.info("The dashboard covers all post-2024 listed companies and unlisted IPO-process companies. Unlisted ratings refer to project quality / primary participation value; listed ratings refer only to current secondary-market decisions. Historical A1 scores are not shown here.")
+    cols = ["dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en", "decision_type_cn" if lang == "中文" else "decision_type_en", "tradingview_url", "code", "name", "lifecycle_stage", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "listing_date", "industry_level_1", "current_stage_score", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "primary_recommendation", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "next_action_cn" if lang == "中文" else "next_action_en"]
+    display_table(dash_view.sort_values("current_stage_score", ascending=False, na_position="last"), lang, cols, 620)
+    download_button(dash_view, "current_decision_dashboard.csv", lang)
 
 elif page == "a1":
     st.subheader(T["pages"]["a1"])
@@ -1062,28 +1352,55 @@ elif page == "a1":
 elif page == "ipo":
     st.subheader(T["pages"]["ipo"])
     ipo = view[view.get("issue_price", pd.Series(np.nan, index=view.index)).notna() | view.get("offer_price_high", pd.Series(np.nan, index=view.index)).notna()].copy()
-    cols = [tier_col, "code", "name", "listing_date", "issue_price", "offer_price_low", "offer_price_high", "public_subscription_multiple", "public_subscription_multiple_ballot", "one_lot_success_rate_pct", "margin_multiple", "cornerstone_count", "cornerstone_amount_hkd", "primary_score", "primary_recommendation", "cornerstone_recommendation"]
+    cols = ["dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en", "code", "name", "listing_date", "issue_price", "offer_price_low", "offer_price_high", "public_subscription_multiple", "public_subscription_multiple_ballot", "one_lot_success_rate_pct", "margin_multiple", "cornerstone_count", "cornerstone_amount_hkd", "primary_score", "primary_recommendation", "cornerstone_recommendation"]
+    # Dashboard ratings may not exist on raw view, so fall back to legacy tier if needed.
+    if ("dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en") not in ipo.columns:
+        cols[0] = tier_col
     display_table(ipo.sort_values("primary_score", ascending=False, na_position="last"), lang, cols, 620)
     with st.expander(tr(lang, "standards"), expanded=True):
         if lang == "中文":
             st.markdown("""
-| 维度 | 关注点 | 高档定义 | 风险档定义 |
-|---|---|---|---|
-| 发行定价 | 发行价区间、发行价位置、估值安全边际 | 定价合理或让利，仍有估值空间 | 定价贴近上限但基本面/行业承接不足 |
-| 需求热度 | 公开认购、孖展、国际配售 | 多渠道需求强且不过度拥挤 | 单靠孖展或散户过热，机构承接弱 |
-| 发行结构 | 流通盘、回拨、募资规模 | 流通和募资规模适中 | 流通太小容易炒作后失衡，太大承接压力大 |
-| 基石质量 | 基石数量、金额、类型 | 长线主权/产业/头部机构参与 | 关联、短线或质量不明，且解禁压力大 |
-| 投行质量 | 保荐人、账簿管理人、承销团 | 历史项目表现和销售能力较好 | 历史破发率高或销售能力弱 |
+#### 招股期参与分：默认100分量化框架
+| 维度 | 默认权重 | 量化定义 |
+|---|---:|---|
+| 发行定价 | 20% | 定价位置=(最终发行价-招股价下限)/(招股价上限-招股价下限)。≤30%高分；30%-70%中性；≥70%且认购弱扣分。 |
+| 需求热度 | 20% | 公开认购≥100倍=极热；50-100倍=热；15-50倍=中高；3-15倍=中性；<3倍=偏弱。孖展≥100倍=极拥挤，需结合暗盘确认。 |
+| 中签与资金效率 | 15% | 一手中签率<5%=极拥挤、资金效率低；5%-20%=热；20%-50%=中性；>50%=热度偏弱但中签效率高。 |
+| 基石质量 | 15% | 基石占发行比例20%-50%为中性偏好；主权/长线/产业方加分；关联或不透明资金扣分；过高基石占比增加解禁风险。 |
+| 发行结构 | 10% | 募资规模和流通盘适中加分；过大=承接压力，过小=易炒作后失衡。 |
+| 投行/账簿质量 | 10% | 用历史项目首日胜率、20/60日表现、破发率和成交活跃度量化。 |
+| 市场窗口 | 10% | 最近10-20只IPO首日收益、破发率、港股成交环境；新股赚钱效应强加分。 |
+
+#### 输出档位
+| 分数 | 建议 |
+|---:|---|
+| ≥80 | 强参与 |
+| 70-79 | 小额/中等参与 |
+| 60-69 | 谨慎参与，等配发/暗盘 |
+| 50-59 | 只看二级 |
+| <50 | 回避 |
 """)
         else:
             st.markdown("""
-| Dimension | Focus | Strong Tier | Risk Tier |
-|---|---|---|---|
-| Pricing | Offer range, final pricing, valuation safety | Reasonable/discounted pricing with upside room | Top-end pricing without sufficient support |
-| Demand Heat | Public subscription, margin, international placing | Broad-based demand without excessive crowding | Retail/margin-driven heat with weak institutional support |
-| Deal Structure | Float, clawback, fundraising size | Balanced float and fundraising size | Too small to sustain or too large to absorb |
-| Cornerstone Quality | Investor type, count and amount | Long-only sovereign/strategic/top-tier investors | Related/unclear quality and high lock-up pressure |
-| Syndicate Quality | Sponsor, bookrunners, underwriters | Strong track record and distribution | Weak historical performance or distribution |
+#### IPO Participation Score: 100-point quantitative framework
+| Dimension | Default Weight | Quantitative Definition |
+|---|---:|---|
+| Pricing | 20% | Pricing position=(final price-low end)/(high end-low end). ≤30% high score; 30%-70% neutral; ≥70% plus weak demand penalized. |
+| Demand Heat | 20% | Public subscription ≥100x=extreme; 50-100x=hot; 15-50x=medium-high; 3-15x=neutral; <3x=weak. Margin ≥100x=very crowded and must be confirmed by gray market. |
+| Ballot / Capital Efficiency | 15% | One-lot success <5%=very crowded / low capital efficiency; 5%-20%=hot; 20%-50%=neutral; >50%=weak heat but high hit rate. |
+| Cornerstone Quality | 15% | 20%-50% cornerstone share is neutral-positive; sovereign/long-only/strategic investors add points; related/opaque capital penalized; too high share raises lock-up risk. |
+| Deal Structure | 10% | Balanced deal size / float add points; too large creates absorption pressure, too small can lead to unstable speculation. |
+| Syndicate Quality | 10% | Quantified by historical first-day win rate, 20/60D performance, break rate and liquidity. |
+| Market Window | 10% | Recent 10-20 IPO returns, break rate and HK market turnover; strong IPO money-making effect adds points. |
+
+#### Output Tiers
+| Score | Recommendation |
+|---:|---|
+| ≥80 | Strong participate |
+| 70-79 | Small / moderate participate |
+| 60-69 | Cautious; wait for allotment / gray market |
+| 50-59 | Secondary only |
+| <50 | Avoid |
 """)
 
 elif page == "gray":
@@ -1116,29 +1433,50 @@ elif page == "gray":
 
 elif page == "post":
     st.subheader(T["pages"]["post"])
-    post = view[view.get("quote_status", pd.Series("", index=view.index)).astype(str).isin(["ok", "partial"]) | view.get("path_label", pd.Series("", index=view.index)).notna()].copy()
-    cols = [tier_col, "code", "name", "listing_date", "issue_price", "quote_rows", "quote_source", "quote_status", "path_label", "d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "secondary_score", "secondary_recommendation", "buy_trigger", "sell_trigger"]
-    display_table(post.sort_values("secondary_score", ascending=False, na_position="last"), lang, cols, 640)
-    with st.expander(tr(lang, "standards"), expanded=True):
+    if lang == "中文":
+        st.info("本页覆盖所有2024年后上市公司，不仅限于180日内。0-180日重点看发行价关系、深V和升后破发；180日后重点看趋势延续、长期破发修复、解禁后再定价和高位回撤。")
+    else:
+        st.info("This page covers all companies listed since 2024, not only the first 180 days. For 0-180D it focuses on issue-price relationship, deep-V and pump-then-break; after 180D it focuses on trend continuation, long break-price recovery, post-lock-up repricing and high-level drawdown.")
+    post = build_secondary_view(view, quotes)
+    bucket_options = sorted(post.get("listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", pd.Series(dtype=str)).dropna().unique()) if not post.empty else []
+    selected_buckets = st.multiselect("上市分层" if lang == "中文" else "Listing-age bucket", bucket_options, default=bucket_options)
+    if selected_buckets:
+        bcol = "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en"
+        post = post[post[bcol].isin(selected_buckets)]
+    cols = ["secondary_rating_cn" if lang == "中文" else "secondary_rating_en", "tradingview_url", "code", "name", "listing_date", "listed_days", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "issue_price", "last_close", "relative_to_issue_pct", "quote_rows", "quote_source", "last_quote_date", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "ret20_current", "ret60_current", "drawdown_from_quote_high", "current_stage_score", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "buy_trigger", "sell_trigger"]
+    display_table(post.sort_values("current_stage_score", ascending=False, na_position="last"), lang, cols, 680)
+    with st.expander("量化路径定义" if lang == "中文" else "Quantitative Path Definitions", expanded=True):
         if lang == "中文":
             st.markdown("""
-| 路径 | 定义 | 操作含义 |
+| 路径/状态 | 量化定义 | 操作含义 |
 |---|---|---|
-| 上市即强势 | 首日/早期显著高于发行价，回撤可控 | 不追高，等回踩或趋势确认 |
-| 深V反弹 | 先破发或明显回撤，随后重新站回关键位 | 重点关注二级买点 |
-| 温和趋势 | 涨跌不极端，逐步形成支撑 | 小仓试错，重视成交确认 |
-| 升后破发 | 前期大涨后跌回发行价下方 | 卖点/降仓优先 |
-| 持续破发/弱势 | 长期低于发行价且承接弱 | 回避，除非基本面或估值重新定价 |
+| 上市即强势 | 首日收盘涨幅≥10%，且20日内最低价未低于发行价-5%，且20日最大涨幅≥20% | 不追高，等回踩或趋势确认 |
+| 深V反弹 | 20日内较发行价最大跌幅≤-10%或60日压力≤-15%，之后60日最大反弹≥25%，且重新站回发行价 | 重点关注二级买点 |
+| 一路破发 | 首日收盘破发或20日内跌破发行价-5%，且60日最大反弹<15%/未站回发行价 | 原则上回避 |
+| 升后破发 | 前20日最大涨幅≥15%，但之后跌破发行价或60日压力≤-30% | 卖点/降仓优先 |
+| 温和交易型 | 20日内最大回撤不超过15%，最大涨幅不超过20%，未形成强趋势 | 等催化或成交确认 |
+| 趋势延续(180D+) | 近60日收益≥15%，且距行情高点回撤<20% | 可继续二级跟踪 |
+| 高位震荡(180D+) | 距行情高点回撤<15%，且近20日收益在±10%以内 | 等突破或回踩确认 |
+| 长期破发修复(180D+) | 曾跌破发行价，当前重新高于发行价 | 关注修复交易 |
+| 长期破发弱势(180D+) | 上市180日后仍低于发行价10%以上，且60日反弹不足15% | 回避或仅观察 |
+| 高位回撤预警(180D+) | 从行情高点回撤≥30% | 风控/止盈优先 |
+
+**术语阈值**：明显回撤≥15%；显著回撤≥25%；显著高于发行价=收盘价高于发行价≥10%；重新站回发行价=连续2日收盘价≥发行价；放量=成交额≥过去5日均值1.5倍；放量滞涨=成交额≥5日均值1.5倍但收盘涨幅<2%。
 """)
         else:
             st.markdown("""
-| Path | Definition | Trading Implication |
+| Path / State | Quantitative Definition | Trading Implication |
 |---|---|---|
-| Strong open | Early price remains significantly above issue price with controlled drawdown | Do not chase; wait for pullback or trend confirmation |
-| Deep-V rebound | Breaks issue price / sharp drawdown then reclaims key levels | Key secondary buy setup |
-| Moderate trend | Non-extreme path with developing support | Small trial position only with turnover confirmation |
-| Pump then break | Early rally followed by break below issue price | Sell / reduce risk first |
-| Persistent break / weak | Stays below issue price with weak absorption | Avoid unless fundamentals/valuation reset |
+| Strong from listing | D1 close ≥10%, 20D low not below issue price -5%, 20D max gain ≥20% | Do not chase; wait for pullback/trend confirmation |
+| Deep-V rebound | 20D max drawdown ≤-10% vs issue price or 60D pressure ≤-15%, later 60D rebound ≥25%, back above issue price | Key secondary buy setup |
+| Persistent break issue price | D1 break or 20D break below issue price -5%, and 60D max rebound <15% / not back above issue price | Avoid by default |
+| Pump then break | 20D max gain ≥15%, then below issue price or 60D pressure ≤-30% | Sell / reduce risk first |
+| Moderate trading path | 20D max drawdown <=15%, max gain <=20%, no strong trend | Wait for catalyst or turnover confirmation |
+| Trend continuation (180D+) | 60D return ≥15% and drawdown from quote high <20% | Continue secondary tracking |
+| High-level consolidation (180D+) | Drawdown from quote high <15% and 20D return within ±10% | Wait for breakout or pullback confirmation |
+| Long break-price recovery (180D+) | Previously broke issue price, now above issue price | Watch recovery trade |
+| Long-term weak below issue price (180D+) | After 180D still >10% below issue price and 60D rebound <15% | Avoid / observe only |
+| High-level drawdown alert (180D+) | Drawdown from quote high ≥30% | Prioritize risk control / profit taking |
 """)
 
 elif page == "lockup":
@@ -1177,7 +1515,7 @@ elif page == "weights":
     st.subheader(T["pages"]["weights"])
     profile_items = list(weight_profiles.items())
     if not profile_items:
-        weight_profiles = {"balanced": {"zh_name":"平衡型","en_name":"Balanced","zh_desc":"默认方案","en_desc":"Default profile","weights":{"定价安全":20,"需求热度":20,"基石质量":15,"投行质量":10,"暗盘/首日":15,"上市后路径":15,"解禁安全":5}}}
+        weight_profiles = {"balanced": {"zh_name":"平衡型","en_name":"Balanced","zh_desc":"默认方案","en_desc":"Default profile","weights":{"定价安全":20,"需求热度":20,"基石质量":15,"投行质量":10,"暗盘/首日":15,"上市后二级路径":15,"解禁安全":5}}}
         profile_items = list(weight_profiles.items())
     display_name = lambda kv: (kv[1].get("zh_name") if lang == "中文" else kv[1].get("en_name")) or kv[0]
     selected_tuple = st.selectbox(tr(lang, "profile"), profile_items, format_func=display_name)
@@ -1187,8 +1525,8 @@ elif page == "weights":
     # Normalize naming
     if "解禁风险" in preset and "解禁安全" not in preset:
         preset["解禁安全"] = preset.pop("解禁风险")
-    dims = ["定价安全", "需求热度", "基石质量", "投行质量", "暗盘/首日", "上市后路径", "解禁安全"]
-    dim_en = {"定价安全":"Pricing Safety", "需求热度":"Demand Heat", "基石质量":"Cornerstone Quality", "投行质量":"Syndicate Quality", "暗盘/首日":"Gray / First Day", "上市后路径":"Post-listing Path", "解禁安全":"Lock-up Safety"}
+    dims = ["定价安全", "需求热度", "基石质量", "投行质量", "暗盘/首日", "上市后二级路径", "解禁安全"]
+    dim_en = {"定价安全":"Pricing Safety", "需求热度":"Demand Heat", "基石质量":"Cornerstone Quality", "投行质量":"Syndicate Quality", "暗盘/首日":"Gray / First Day", "上市后二级路径":"Post-listing Path", "解禁安全":"Lock-up Safety"}
     st.markdown(f"### {tr(lang, 'custom_weights')}")
     cols = st.columns(2)
     weights = {}
@@ -1274,10 +1612,22 @@ elif page == "backtest":
         st.info("This page answers whether high-score buckets perform better, whether the model avoids break-issue-price cases, whether secondary signals work, and where failures occur.")
     st.markdown("### " + ("评分分层表现" if lang == "中文" else "Score Bucket Performance"))
     display_table(buckets, lang, None, 240)
+    if lang == "中文":
+        st.caption("说明：本表用于验证高分组是否优于低分组。若高分组首日、20日、60日收益更高且破发率更低，说明评分模型具有实际筛选价值；若分组差异不明显，说明权重或阈值需要调整。")
+    else:
+        st.caption("Interpretation: This table checks whether high-score buckets outperform low-score buckets. Higher D1/20D/60D returns and lower break-rate in high-score buckets indicate useful selection value; weak separation suggests weights/thresholds need adjustment.")
     st.markdown("### " + ("权重方案表现" if lang == "中文" else "Weight Profile Performance"))
     display_table(profile_perf, lang, None, 260)
+    if lang == "中文":
+        st.caption("说明：本表比较不同权重方案的历史表现，用来判断当前基金风格应偏重打新收益、二级交易、风险控制还是平衡配置。")
+    else:
+        st.caption("Interpretation: This table compares historical performance of weight profiles and helps choose whether the fund should emphasize IPO return, secondary trading, risk control or a balanced profile.")
     st.markdown("### " + ("因子有效性诊断" if lang == "中文" else "Factor Diagnostics"))
     display_table(diag, lang, None, 300)
+    if lang == "中文":
+        st.caption("说明：本表检查单个因子与后续表现的关系。正向因子应当表现为高分对应更高收益或更低破发率；若方向相反，需要降低该因子权重或重新定义档位。")
+    else:
+        st.caption("Interpretation: This table checks each factor against subsequent performance. A useful positive factor should show higher returns or lower break-rate at higher values; if the relationship is reversed, reduce its weight or redefine tiers.")
     # Failure review
     st.markdown("### " + ("失败/漏判案例复盘" if lang == "中文" else "Failure / Missed-case Review"))
     data = view.copy()
@@ -1290,9 +1640,11 @@ elif page == "backtest":
     with col1:
         st.write("高分但表现弱" if lang == "中文" else "High score but weak outcome")
         display_table(high_fail, lang, ["code", "name", "overall_score", "path_label", "d1_close_ret", "max_20_ret", "min_20_ret", "risk_tags_model"], 280)
+        st.caption("说明：高分但表现弱的样本用于复盘模型是否低估了估值、解禁、流动性或市场窗口风险。" if lang == "中文" else "Interpretation: High-score weak outcomes help review whether valuation, lock-up, liquidity or market-window risks were underestimated.")
     with col2:
         st.write("低分但后续大涨" if lang == "中文" else "Low score but later strong rally")
         display_table(low_miss, lang, ["code", "name", "overall_score", "path_label", "d1_close_ret", "max_180_ret", "min_180_ret", "risk_tags_model"], 280)
+        st.caption("说明：低分但大涨的样本用于复盘模型是否遗漏了行业催化、资金偏好、估值重估或二级交易信号。" if lang == "中文" else "Interpretation: Low-score strong rallies help review whether sector catalysts, fund preference, valuation rerating or secondary signals were missed.")
 
 elif page == "memo":
     st.subheader(tr(lang, "memo_title"))
@@ -1316,7 +1668,7 @@ elif page == "quality":
     if not quotes.empty:
         extra.append({"source_name":"上市后0-180D行情", "file_name":"ipo_daily_quotes_180d.csv", "raw_rows":len(quotes), "normalized_rows":len(quotes), "status":"已接入"})
     if not paths.empty:
-        extra.append({"source_name":"上市后路径标签", "file_name":"ipo_post_listing_paths.csv", "raw_rows":len(paths), "normalized_rows":len(paths), "status":"已接入"})
+        extra.append({"source_name":"上市后二级路径标签", "file_name":"ipo_post_listing_paths.csv", "raw_rows":len(paths), "normalized_rows":len(paths), "status":"已接入"})
     extra.append({"source_name":"投资决策评分", "file_name":"ipo_investment_decision_scored.csv", "raw_rows":len(pool), "normalized_rows":len(pool), "status":"已接入"})
     inv = inventory.copy()
     if extra:
@@ -1325,6 +1677,19 @@ elif page == "quality":
             inv = inv[~inv["source_name"].isin(ex["source_name"])]
         inv = pd.concat([inv, ex], ignore_index=True)
     display_table(inv, lang, None, 360)
+    st.markdown("### " + ("重复公司/股票检查" if lang == "中文" else "Duplicate Company / Stock Check"))
+    dup_rows = []
+    if "code" in pool.columns:
+        listed_pool = pool[is_listed_mask(pool)].copy()
+        vc = listed_pool["code"].astype(str).str.upper().str.strip().value_counts()
+        for code, n in vc[vc > 1].head(30).items():
+            name = listed_pool.loc[listed_pool["code"].astype(str).str.upper().str.strip() == code, "name"].astype(str).head(1).iloc[0] if "name" in listed_pool.columns else ""
+            dup_rows.append({"code": code, "name": name, "duplicate_rows": int(n), "handling": "已在领导页面按code聚合为一行" if lang == "中文" else "Aggregated to one row by code in leadership pages"})
+    dup_df = pd.DataFrame(dup_rows)
+    if dup_df.empty:
+        st.success("未发现会影响展示的重复股票。" if lang == "中文" else "No display-impacting duplicated stocks found.")
+    else:
+        display_table(dup_df, lang, None, 260)
     st.markdown("### " + ("关键字段缺失率" if lang == "中文" else "Key Field Missingness"))
     key_cols = ["code", "name", "listing_date", "issue_price", "public_subscription_multiple", "one_lot_success_rate_pct", "margin_multiple", "cornerstone_amount_hkd", "sponsor", "gray_close_ret_pct", "path_label", "next_unlock_date"]
     miss = []

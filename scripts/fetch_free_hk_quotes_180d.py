@@ -121,10 +121,10 @@ def wanted_codes(pool: pd.DataFrame, max_names: int | None = None) -> list[tuple
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="免费渠道抓取港股IPO上市后0-180D日行情：优先Yahoo/yfinance，失败后Stooq。")
+    parser = argparse.ArgumentParser(description="免费渠道抓取2024+港股IPO上市后至今的日行情：优先Yahoo/yfinance，失败后Stooq。")
     parser.add_argument("--pool", default="deploy_data/ipo_decision_pool.csv", help="IPO主表CSV")
     parser.add_argument("--out", default="deploy_data/ipo_daily_quotes_180d.csv", help="输出CSV")
-    parser.add_argument("--days", type=int, default=180, help="上市后天数")
+    parser.add_argument("--days", type=int, default=9999, help="上市后抓取天数；默认9999表示从上市日至今天，兼容180D和180D+二级交易池")
     parser.add_argument("--sleep", type=float, default=0.8, help="每只股票间隔秒数")
     parser.add_argument("--max", type=int, default=0, help="测试用：最多抓多少只，0为不限")
     args = parser.parse_args()
