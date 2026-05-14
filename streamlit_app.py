@@ -99,7 +99,8 @@ TEXT = {
             "memo": "⑩ 单票投资备忘录",
             "research": "⑪ 人工研究评分",
             "review": "⑫ 人工复核池",
-            "quality": "⑬ 数据质量",
+            "update": "⑬ 数据更新",
+            "quality": "⑭ 数据质量",
         },
         "metric_total": "样本数",
         "metric_a1": "A1/申请项目",
@@ -140,7 +141,8 @@ TEXT = {
             "memo": "⑩ Single-name Investment Memo",
             "research": "⑪ Manual Research Scores",
             "review": "⑫ Manual Review Queue",
-            "quality": "⑬ Data Quality",
+            "update": "⑬ Data Update",
+            "quality": "⑭ Data Quality",
         },
         "metric_total": "Samples",
         "metric_a1": "A1 / Filing projects",
@@ -2072,6 +2074,53 @@ elif page == "review":
         cols = ["review_reason_cn" if lang == "中文" else "review_reason_en", "tradingview_url", "code", "name", "lifecycle_stage", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en", "current_stage_score", "quote_freshness_cn" if lang == "中文" else "quote_freshness_en", "score_confidence_cn" if lang == "中文" else "score_confidence_en", "date_check_cn" if lang == "中文" else "date_check_en", "issue_price", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en"]
         display_table(review.sort_values("current_stage_score", ascending=False, na_position="last"), lang, cols, 620)
         download_button(review, "manual_review_queue.csv", lang)
+
+elif page == "update":
+    st.subheader(T["pages"]["update"])
+    status = read_csv_any(BASE / "data_update_status.csv")
+    if lang == "中文":
+        st.info("本页显示16:30日度更新引擎的结果。日常可在本地双击 `run_daily_update_low_quota.bat`；若只处理iFind导出文件，可双击 `process_ifind_exports_offline.bat`。")
+    else:
+        st.info("This page shows the result of the 16:30 daily update engine. Run `run_daily_update_low_quota.bat` locally for API updates, or `process_ifind_exports_offline.bat` for offline iFind exports.")
+    c1, c2, c3, c4 = st.columns(4)
+    if status.empty:
+        c1.metric("数据源" if lang == "中文" else "Sources", "0")
+        c2.metric("成功" if lang == "中文" else "OK", "0")
+        c3.metric("失败/保留旧数据" if lang == "中文" else "Failed / old kept", "0")
+        c4.metric("最近更新时间" if lang == "中文" else "Last updated", "")
+        st.warning("暂无 data_update_status.csv。运行一次更新脚本后这里会显示状态。" if lang == "中文" else "No data_update_status.csv yet. Run the update script once to populate this page.")
+    else:
+        status_col = "status" if "status" in status.columns else None
+        ok = int(status[status_col].astype(str).str.contains("ok|dry_run|no_new_data", case=False, na=False).sum()) if status_col else 0
+        fail = int(status[status_col].astype(str).str.contains("failed", case=False, na=False).sum()) if status_col else 0
+        updated = status["updated_at"].dropna().astype(str).max() if "updated_at" in status.columns and status["updated_at"].notna().any() else ""
+        c1.metric("数据源" if lang == "中文" else "Sources", len(status))
+        c2.metric("成功/保留可用" if lang == "中文" else "OK / usable", ok)
+        c3.metric("失败" if lang == "中文" else "Failed", fail)
+        c4.metric("最近更新时间" if lang == "中文" else "Last updated", updated)
+        display_table(status, lang, None, 420)
+        download_button(status, "data_update_status.csv", lang)
+    st.markdown("### " + ("本地更新入口" if lang == "中文" else "Local update entry points"))
+    if lang == "中文":
+        st.markdown("""
+- `00_setup_env.bat`：首次使用安装依赖。
+- `run_daily_update_low_quota.bat`：收盘后日常更新，会调用 iFind API，但采用低额度策略。
+- `run_daily_update_dry_run.bat`：模拟运行，不调用 API，不消耗额度。
+- `process_ifind_exports_offline.bat`：只处理 `ifind_exports/` 下的 Excel/CSV，不调用 API。
+- `build_ifind_field_mapping_offline.bat`：根据 iFind 导出文件中文表头反推 `p05310_f001`、`p03764_f001` 等字段含义，不调用 API。
+
+更多说明见 `docs/daily_update_engine.md` 和 `docs/next_version_plan.md`。
+""")
+    else:
+        st.markdown("""
+- `00_setup_env.bat`: install dependencies for first-time use.
+- `run_daily_update_low_quota.bat`: daily post-close update using low-quota iFind API calls.
+- `run_daily_update_dry_run.bat`: dry-run mode, no API quota used.
+- `process_ifind_exports_offline.bat`: process Excel/CSV files under `ifind_exports/` without API calls.
+- `build_ifind_field_mapping_offline.bat`: infer field meanings such as `p05310_f001` and `p03764_f001` from exported iFind column headers, without API calls.
+
+See `docs/daily_update_engine.md` and `docs/next_version_plan.md` for details.
+""")
 
 elif page == "quality":
     st.subheader(tr(lang, "data_quality"))
