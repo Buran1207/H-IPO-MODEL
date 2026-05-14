@@ -87,16 +87,19 @@ TEXT = {
         "download": "下载当前表",
         "empty": "暂无数据",
         "pages": {
-            "dashboard": "① 决策总览",
-            "a1": "② A1项目观察池",
-            "ipo": "③ 招股期参与决策",
-            "gray": "④ 暗盘与首日交易",
-            "post": "⑤ 二级市场交易状态机",
-            "lockup": "⑥ 解禁与供给压力",
-            "weights": "⑦ 评分标准与权重设置",
-            "backtest": "⑧ 回测与有效性验证",
-            "memo": "⑨ 单票投资备忘录",
-            "quality": "⑩ 数据质量",
+            "actions": "① 今日决策清单",
+            "dashboard": "② 决策总览",
+            "a1": "③ A1项目观察池",
+            "ipo": "④ 招股期参与决策",
+            "gray": "⑤ 暗盘与首日交易",
+            "post": "⑥ 二级市场交易状态机",
+            "lockup": "⑦ 解禁与供给压力",
+            "weights": "⑧ 评分标准与权重设置",
+            "backtest": "⑨ 回测与有效性验证",
+            "memo": "⑩ 单票投资备忘录",
+            "research": "⑪ 人工研究评分",
+            "review": "⑫ 人工复核池",
+            "quality": "⑬ 数据质量",
         },
         "metric_total": "样本数",
         "metric_a1": "A1/申请项目",
@@ -125,16 +128,19 @@ TEXT = {
         "download": "Download table",
         "empty": "No data",
         "pages": {
-            "dashboard": "① Decision Dashboard",
-            "a1": "② A1 Project Watchlist",
-            "ipo": "③ IPO Participation Decision",
-            "gray": "④ Gray Market & First Day",
-            "post": "⑤ Secondary-market Trading State Machine",
-            "lockup": "⑥ Lock-up & Supply Pressure",
-            "weights": "⑦ Scoring Standards & Weights",
-            "backtest": "⑧ Backtest & Effectiveness",
-            "memo": "⑨ Single-name Investment Memo",
-            "quality": "⑩ Data Quality",
+            "actions": "① Today's Action List",
+            "dashboard": "② Decision Dashboard",
+            "a1": "③ A1 Project Watchlist",
+            "ipo": "④ IPO Participation Decision",
+            "gray": "⑤ Gray Market & First Day",
+            "post": "⑥ Secondary-market Trading State Machine",
+            "lockup": "⑦ Lock-up & Supply Pressure",
+            "weights": "⑧ Scoring Standards & Weights",
+            "backtest": "⑨ Backtest & Effectiveness",
+            "memo": "⑩ Single-name Investment Memo",
+            "research": "⑪ Manual Research Scores",
+            "review": "⑫ Manual Review Queue",
+            "quality": "⑬ Data Quality",
         },
         "metric_total": "Samples",
         "metric_a1": "A1 / Filing projects",
@@ -209,6 +215,9 @@ COL_EN = {
 
 
 COL_ZH.update({
+    "action_category_cn": "动作分类", "action_priority_cn": "优先级", "action_reason_cn": "触发原因", "review_reason_cn": "复核原因",
+    "manual_quality_rating": "人工基本面评级", "manual_quality_score": "人工基本面分", "industry_view": "行业观点", "valuation_view": "估值观点", "research_comment": "研究备注", "updated_by": "更新人", "updated_date": "更新日期",
+    "rating_bucket": "评级档位", "sample_count": "样本数", "sample_pct": "样本占比", "target_range": "建议占比", "calibration_note_cn": "校准提示",
     "tradingview_url": "TradingView图表", "current_stage_score": "当前阶段分", "dashboard_rating_cn": "当前评级",
     "decision_type_cn": "决策类型", "listed_age_bucket_cn": "上市分层", "listed_days": "上市天数",
     "quant_path_label_cn": "量化路径/状态", "relative_to_issue_pct": "较发行价", "last_close": "最近收盘",
@@ -218,6 +227,9 @@ COL_ZH.update({
     "secondary_rating_cn": "二级评级", "secondary_action_cn": "二级操作建议",
 })
 COL_EN.update({
+    "action_category_en": "Action Category", "action_priority_en": "Priority", "action_reason_en": "Trigger Reason", "review_reason_en": "Review Reason",
+    "manual_quality_rating": "Manual Fundamental Rating", "manual_quality_score": "Manual Fundamental Score", "industry_view": "Industry View", "valuation_view": "Valuation View", "research_comment": "Research Comment", "updated_by": "Updated By", "updated_date": "Updated Date",
+    "rating_bucket": "Rating Bucket", "sample_count": "Samples", "sample_pct": "Sample %", "target_range": "Target Range", "calibration_note_en": "Calibration Note",
     "tradingview_url": "TradingView Chart", "current_stage_score": "Current-stage Score", "dashboard_rating_en": "Current Rating",
     "decision_type_en": "Decision Type", "listed_age_bucket_en": "Listing-age Bucket", "listed_days": "Days Listed",
     "quant_path_label_en": "Quant Path / State", "relative_to_issue_pct": "Vs Issue Price", "last_close": "Last Close",
@@ -1051,7 +1063,7 @@ def display_table(df: pd.DataFrame, lang: str, cols: list[str] | None = None, he
         if c in out.columns: out[c] = out[c].map(fmt_pct)
     for c in ["gray_open_ret_pct", "gray_close_ret_pct", "d1_open_ret_pct", "d1_close_ret_pct", "one_lot_success_rate_pct"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct_raw)
-    for c in ["首日均值", "二十日最大均值", "六十日最大均值", "一八零日最大均值", "二十日最小均值", "交易成功率", "强势或深V率", "坏路径率", "top_tradeable_20d_rate", "top_strong_or_deepv_rate", "top_bad_path_rate", "top_d1_mean", "top_max20_mean", "top_min20_mean"]:
+    for c in ["首日均值", "二十日最大均值", "六十日最大均值", "一八零日最大均值", "二十日最小均值", "交易成功率", "强势或深V率", "坏路径率", "top_tradeable_20d_rate", "top_strong_or_deepv_rate", "top_bad_path_rate", "top_d1_mean", "top_max20_mean", "top_min20_mean", "sample_pct"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct)
     for c in ["overall_score", "current_stage_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score", "custom_score", "margin_multiple", "public_subscription_multiple", "public_subscription_multiple_ballot", "cornerstone_value_to_avg20_turnover", "last_close"]:
         if c in out.columns: out[c] = out[c].map(lambda x: fmt_num(x, 1))
@@ -1100,6 +1112,182 @@ def make_custom_scores(df: pd.DataFrame, weights: dict[str, float]) -> pd.DataFr
     out["custom_tier_cn"] = out["custom_score"].map(lambda x: "A 重点参与" if x >= 75 else "B 交易观察" if x >= 60 else "C 等待触发" if x >= 45 else "D 回避/仅跟踪")
     out["custom_tier_en"] = out["custom_score"].map(lambda x: "A Priority Participate" if x >= 75 else "B Trading Watch" if x >= 60 else "C Wait for Trigger" if x >= 45 else "D Avoid / Track only")
     return out
+
+
+def manual_score_from_rating(value):
+    if pd.isna(value):
+        return np.nan
+    s = str(value).strip()
+    mapping = {
+        "强": 90, "较强": 78, "中性": 60, "较弱": 45, "回避": 20,
+        "Strong": 90, "Positive": 78, "Neutral": 60, "Weak": 45, "Avoid": 20,
+        "A": 90, "B": 78, "C": 60, "D": 35,
+    }
+    return mapping.get(s, np.nan)
+
+
+def apply_manual_research_scores(df: pd.DataFrame, manual: pd.DataFrame) -> pd.DataFrame:
+    """Merge analyst research views into the model without requiring a database.
+    The CSV can be edited locally and uploaded as deploy_data/manual_research_scores.csv.
+    Manual company-quality score only affects the A1 company-quality dimension and recalculates A1 quality score.
+    """
+    out = df.copy()
+    if manual is None or manual.empty:
+        for c in ["manual_quality_rating", "manual_quality_score", "industry_view", "valuation_view", "research_comment", "updated_by", "updated_date"]:
+            if c not in out.columns:
+                out[c] = np.nan
+        return out
+    m = manual.copy()
+    # Normalize expected columns; tolerate Chinese column names.
+    rename = {
+        "代码": "code", "简称": "name", "公司": "name", "公司名称": "name", "人工基本面评级": "manual_quality_rating",
+        "人工基本面分": "manual_quality_score", "行业观点": "industry_view", "估值观点": "valuation_view",
+        "研究备注": "research_comment", "更新人": "updated_by", "更新日期": "updated_date",
+    }
+    m = m.rename(columns={k:v for k,v in rename.items() if k in m.columns})
+    if "code" not in m.columns:
+        m["code"] = ""
+    if "name" not in m.columns:
+        m["name"] = ""
+    m["_code_key"] = m["code"].fillna("").astype(str).str.upper().str.strip()
+    m["_name_key"] = m["name"].fillna("").map(normalize_name_value)
+    if "manual_quality_score" in m.columns:
+        m["manual_quality_score"] = to_num(m["manual_quality_score"])
+    else:
+        m["manual_quality_score"] = np.nan
+    if "manual_quality_rating" in m.columns:
+        rating_score = m["manual_quality_rating"].map(manual_score_from_rating)
+        m["manual_quality_score"] = m["manual_quality_score"].combine_first(rating_score)
+    m = m.sort_values(["_code_key", "_name_key"]).drop_duplicates(["_code_key", "_name_key"], keep="last")
+    out["_code_key"] = out.get("code", pd.Series("", index=out.index)).fillna("").astype(str).str.upper().str.strip()
+    out["_name_key"] = out.get("name", pd.Series("", index=out.index)).fillna("").map(normalize_name_value)
+    by_code = m[m["_code_key"].ne("")].set_index("_code_key")
+    by_name = m[m["_name_key"].ne("")].set_index("_name_key")
+    cols = ["manual_quality_rating", "manual_quality_score", "industry_view", "valuation_view", "research_comment", "updated_by", "updated_date"]
+    for c in cols:
+        if c not in out.columns:
+            out[c] = np.nan
+        if c in by_code.columns:
+            out[c] = out["_code_key"].map(by_code[c]).combine_first(out[c])
+        if c in by_name.columns:
+            out[c] = out["_name_key"].map(by_name[c]).combine_first(out[c])
+    # If manual quality exists, overwrite company quality dimension and recalculate A1 quality score under default weights.
+    mq = to_num(out.get("manual_quality_score", pd.Series(np.nan, index=out.index))).clip(0, 100)
+    has_mq = mq.notna()
+    if "a1_company_quality_score" in out.columns:
+        out.loc[has_mq, "a1_company_quality_score"] = mq[has_mq]
+    if {"a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score"}.issubset(out.columns):
+        out["a1_quality_score"] = (
+            to_num(out["a1_industry_preference_score"]).fillna(50) * 0.35 +
+            to_num(out["a1_company_quality_score"]).fillna(50) * 0.20 +
+            to_num(out["a1_sponsor_quality_score"]).fillna(50) * 0.15 +
+            to_num(out["a1_peer_ipo_score"]).fillna(50) * 0.15 +
+            to_num(out["a1_tradability_score"]).fillna(50) * 0.10 +
+            to_num(out["a1_market_window_score"]).fillna(50) * 0.05
+        ).round(1)
+        # refresh user-facing buckets
+        out["a1_research_priority_cn"] = out["a1_quality_score"].map(lambda x: "A 重点跟踪" if pd.notna(x) and x >= 80 else "B+ 重点研究" if pd.notna(x) and x >= 70 else "B 研究池" if pd.notna(x) and x >= 60 else "C 观察" if pd.notna(x) and x >= 50 else "D 低优先级")
+        out["a1_research_priority_en"] = out["a1_quality_score"].map(lambda x: "A High-priority watch" if pd.notna(x) and x >= 80 else "B+ Priority research" if pd.notna(x) and x >= 70 else "B Research pool" if pd.notna(x) and x >= 60 else "C Monitor" if pd.notna(x) and x >= 50 else "D Low priority")
+        out["future_ipo_participation_cn"] = out["a1_quality_score"].map(lambda x: "拟重点参与，等待发行验证" if pd.notna(x) and x >= 80 else "倾向参与，需看定价" if pd.notna(x) and x >= 70 else "可参与，需强发行信号" if pd.notna(x) and x >= 60 else "暂不主动参与" if pd.notna(x) and x >= 50 else "暂不参与")
+        out["future_ipo_participation_en"] = out["a1_quality_score"].map(lambda x: "Likely priority participation, pending deal validation" if pd.notna(x) and x >= 80 else "Positive bias, subject to pricing" if pd.notna(x) and x >= 70 else "Participate only with strong deal signals" if pd.notna(x) and x >= 60 else "No proactive participation" if pd.notna(x) and x >= 50 else "No participation")
+    return out.drop(columns=[c for c in ["_code_key", "_name_key"] if c in out.columns])
+
+
+def build_today_actions(dashboard: pd.DataFrame) -> pd.DataFrame:
+    if dashboard.empty:
+        return dashboard
+    rows = []
+    for _, r in dashboard.iterrows():
+        listed = pd.notna(pd.to_datetime(r.get("listing_date"), errors="coerce")) and pd.to_datetime(r.get("listing_date"), errors="coerce") <= pd.Timestamp.today().normalize()
+        name, code = r.get("name", ""), r.get("code", "")
+        base = r.to_dict()
+        def add(cat_cn, cat_en, pri_cn, pri_en, reason_cn, reason_en):
+            x = base.copy()
+            x["action_category_cn"] = cat_cn; x["action_category_en"] = cat_en
+            x["action_priority_cn"] = pri_cn; x["action_priority_en"] = pri_en
+            x["action_reason_cn"] = reason_cn; x["action_reason_en"] = reason_en
+            rows.append(x)
+        score = pd.to_numeric(pd.Series([r.get("current_stage_score")]), errors="coerce").iloc[0]
+        if not listed:
+            stt = str(r.get("application_status", ""))
+            if status_is_lapsed(stt):
+                add("失效观察", "Lapsed filing watch", "中", "Medium", "未上市且最新申请失效，等待是否重新递表", "Unlisted and latest filing lapsed; wait for refiling")
+            elif pd.notna(score) and score >= 75:
+                add("A1重点建档", "A1 priority research", "高", "High", "项目质量分较高，建议提前建档和准备估值框架", "High project-quality score; build research file and valuation framework")
+            elif pd.isna(r.get("issue_price")) and pd.isna(r.get("offer_price_high")):
+                add("等待招股", "Wait for prospectus / deal terms", "中", "Medium", "尚缺发行价、募资规模、基石和账簿热度", "Waiting for offer price, deal size, cornerstone and bookbuilding signals")
+            else:
+                add("等待配发/暗盘确认", "Wait for allotment / gray confirmation", "中", "Medium", "已有发行资料但缺最终配发、孖展/中签或暗盘信号", "Deal terms available but allotment/margin/gray-market signal pending")
+        else:
+            rating = str(r.get("dashboard_rating_cn", ""))
+            if rating.startswith("A"):
+                add("二级趋势确认", "Secondary trend confirmed", "高", "High", "二级交易评分较高，趋势/价格结构触发关注", "High secondary score; trend/price structure warrants attention")
+            elif "C4" in rating:
+                add("等待二级买点", "Wait for secondary entry", "中", "Medium", "尚未出现合适买点，不追高，等待回踩/站回发行价/成交确认", "No entry yet; wait for pullback/reclaim of issue price/turnover confirmation")
+            elif "C5" in rating or str(r.get("lockup_pressure_cn", "")) in ["高", "中"]:
+                add("解禁前复核", "Review before lock-up", "高", "High", "解禁/供给压力进入观察窗口，交易前需复核承接", "Lock-up/supply pressure is in watch window; verify absorption before trading")
+            elif rating.startswith("D"):
+                add("破发/弱势回避", "Avoid broken / weak structure", "低", "Low", "二级结构弱或破发风险较高，原则上回避", "Weak secondary structure / break-price risk; avoid by default")
+        # Data review overlay
+        qfresh = str(r.get("quote_freshness_cn", ""))
+        if qfresh in ["明显滞后", "缺失"] or str(r.get("score_confidence_cn", "")) == "低" or str(r.get("date_check_cn", "")) not in ["", "正常", "nan"]:
+            add("数据需复核", "Data review required", "高", "High", "行情、评分置信度或日期字段存在复核项", "Quote freshness, score confidence or date fields require review")
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    priority_order = {"高": 0, "中": 1, "低": 2, "High": 0, "Medium": 1, "Low": 2}
+    out["_p"] = out["action_priority_cn"].map(priority_order).fillna(out["action_priority_en"].map(priority_order)).fillna(9)
+    out = out.sort_values(["_p", "current_stage_score"], ascending=[True, False], na_position="last").drop(columns=["_p"])
+    return out
+
+
+def build_rating_distribution(df: pd.DataFrame, rating_col: str) -> pd.DataFrame:
+    if df.empty or rating_col not in df.columns:
+        return pd.DataFrame()
+    ser = df[rating_col].fillna("信息不足").astype(str).str[0].replace({"信":"NA", "I":"NA"})
+    vc = ser.value_counts().reindex(["A", "B", "C", "D", "N", "NA"]).dropna()
+    total = int(vc.sum()) or 1
+    rows = []
+    targets = {"A":"5%-15%", "B":"20%-35%", "C":"35%-50%", "D":"10%-25%"}
+    for k, n in vc.items():
+        if k == "N":
+            continue
+        pct = float(n)/total
+        note_cn = "正常"
+        note_en = "OK"
+        if k == "A" and pct < 0.03: note_cn, note_en = "A档过少，阈值可能偏严", "Too few A names; threshold may be strict"
+        if k == "A" and pct > 0.20: note_cn, note_en = "A档过多，区分度可能不足", "Too many A names; separation may be weak"
+        if k == "D" and pct > 0.40: note_cn, note_en = "D档偏多，需检查数据缺失是否导致低分", "Too many D names; check whether missing data drives low scores"
+        rows.append({"rating_bucket": k, "sample_count": int(n), "sample_pct": pct, "target_range": targets.get(k, "-"), "calibration_note_cn": note_cn, "calibration_note_en": note_en})
+    return pd.DataFrame(rows)
+
+
+def build_manual_review_pool(dashboard: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    if dashboard.empty:
+        return pd.DataFrame()
+    for _, r in dashboard.iterrows():
+        reasons_cn, reasons_en = [], []
+        if str(r.get("quote_freshness_cn", "")) in ["明显滞后", "缺失"]:
+            reasons_cn.append("行情明显滞后或缺失"); reasons_en.append("Quote is stale or missing")
+        if str(r.get("score_confidence_cn", "")) == "低":
+            reasons_cn.append("A1评分置信度低"); reasons_en.append("Low A1 score confidence")
+        if str(r.get("date_check_cn", "")) not in ["", "正常", "nan"]:
+            reasons_cn.append("申请日期字段异常"); reasons_en.append("Application date anomaly")
+        if pd.isna(r.get("issue_price")) and pd.notna(r.get("listing_date")):
+            reasons_cn.append("已上市但发行价缺失"); reasons_en.append("Listed but issue price missing")
+        if str(r.get("lockup_pressure_cn", "")) in ["高"]:
+            reasons_cn.append("高解禁压力"); reasons_en.append("High lock-up pressure")
+        score = pd.to_numeric(pd.Series([r.get("current_stage_score")]), errors="coerce").iloc[0]
+        if pd.notna(score) and score >= 75 and ("行情明显滞后或缺失" in reasons_cn or "A1评分置信度低" in reasons_cn):
+            reasons_cn.append("高分但数据不完整"); reasons_en.append("High score but incomplete data")
+        if reasons_cn:
+            x = r.to_dict()
+            x["review_reason_cn"] = "；".join(reasons_cn)
+            x["review_reason_en"] = "; ".join(reasons_en)
+            rows.append(x)
+    return pd.DataFrame(rows)
+
 
 
 def make_memo(row: pd.Series, lang: str) -> str:
@@ -1241,6 +1429,8 @@ if pool_raw.empty:
     st.stop()
 
 pool = enrich_dynamic(pool_raw, quotes)
+manual_research = read_csv_any(BASE / "manual_research_scores.csv")
+pool = apply_manual_research_scores(pool, manual_research)
 
 # Sidebar
 lang = st.sidebar.radio("语言 / Language", ["中文", "English"], horizontal=True)
@@ -1260,17 +1450,17 @@ refresh_seconds = st.sidebar.selectbox(
     index=0,
     format_func=lambda x: ("关闭" if x == 0 else f"{x}秒"),
 )
-if refresh_seconds and page in ["dashboard", "post"]:
+if refresh_seconds and page in ["actions", "dashboard", "post", "memo"]:
     components.html(f"<script>setTimeout(function(){{window.parent.location.reload();}}, {int(refresh_seconds)*1000});</script>", height=0)
 
 # Filters
 # Use page-aware source columns so the sidebar rating filter matches the displayed rating.
-filter_source = build_dashboard_view(pool, quotes) if page == "dashboard" else pool
+filter_source = build_dashboard_view(pool, quotes) if page in ["actions", "dashboard", "review"] else pool
 with st.sidebar.expander("筛选 / Filters", expanded=True):
     min_score = st.slider(tr(lang, "min_score"), 0, 100, 0, 5)
     stage_vals = sorted([x for x in filter_source.get("lifecycle_stage", pd.Series(dtype=str)).dropna().astype(str).unique()])
     stages = st.multiselect(tr(lang, "stage"), stage_vals, default=stage_vals)
-    if page == "dashboard":
+    if page in ["actions", "dashboard", "review"]:
         tier_col = "dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en"
     elif page == "post":
         tier_col = "secondary_rating_cn" if lang == "中文" else "secondary_rating_en"
@@ -1291,11 +1481,11 @@ with st.sidebar.expander("筛选 / Filters", expanded=True):
     query = st.text_input(tr(lang, "search"), "")
 
 view = pool.copy()
-if "overall_score" in view.columns and page not in ["dashboard", "post"]:
+if "overall_score" in view.columns and page not in ["actions", "dashboard", "post", "review"]:
     view = view[to_num(view["overall_score"]).fillna(0) >= min_score]
 if stages and "lifecycle_stage" in view.columns:
     view = view[view["lifecycle_stage"].astype(str).isin(stages)]
-if tiers and tier_col in view.columns and page not in ["dashboard", "post"]:
+if tiers and tier_col in view.columns and page not in ["actions", "dashboard", "post", "review"]:
     view = view[view[tier_col].astype(str).isin(tiers)]
 if inds and "industry_level_1" in view.columns:
     view = view[view["industry_level_1"].astype(str).isin(inds)]
@@ -1310,7 +1500,50 @@ listed_mask = listing_dates_for_mask.notna() & (listing_dates_for_mask <= today_
 a1_mask = pool.get("application_date", pd.Series(pd.NaT, index=pool.index)).notna() & ~listed_mask
 high_lock = pool.get("lockup_pressure_cn", pd.Series("", index=pool.index)).isin(["高", "中"]) & (to_num(pool.get("days_to_unlock", pd.Series(np.nan, index=pool.index))) <= 90)
 
-if page == "dashboard":
+if page == "actions":
+    dash = build_dashboard_view(pool, quotes)
+    actions = build_today_actions(dash)
+    # Apply global filters to the action list.
+    if query:
+        q = query.strip().lower()
+        mask = actions.get("code", pd.Series("", index=actions.index)).astype(str).str.lower().str.contains(q, na=False) | actions.get("name", pd.Series("", index=actions.index)).astype(str).str.lower().str.contains(q, na=False)
+        actions = actions[mask]
+    if stages and "lifecycle_stage" in actions.columns:
+        actions = actions[actions["lifecycle_stage"].astype(str).isin(stages)]
+    if inds and "industry_level_1" in actions.columns:
+        actions = actions[actions["industry_level_1"].astype(str).isin(inds)]
+    dash_rating_col = "dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en"
+    if tiers and dash_rating_col in actions.columns:
+        actions = actions[actions[dash_rating_col].astype(str).isin(tiers)]
+    if "current_stage_score" in actions.columns:
+        actions = actions[to_num(actions["current_stage_score"]).fillna(0) >= min_score]
+    st.subheader(T["pages"]["actions"])
+    if lang == "中文":
+        st.info("本页按“今天需要做什么”归类，而不是简单列股票。重点用于晨会/盘前检查：建档、等待、参与、复核、回避。")
+    else:
+        st.info("This page groups names by what needs to be done today, rather than listing stocks only. It is designed for morning meeting / pre-trade checks.")
+    if actions.empty:
+        st.info(tr(lang, "empty"))
+    else:
+        pri_col = "action_priority_cn" if lang == "中文" else "action_priority_en"
+        cat_col = "action_category_cn" if lang == "中文" else "action_category_en"
+        cats = actions[cat_col].dropna().astype(str).unique().tolist()
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("动作数" if lang == "中文" else "Actions", len(actions))
+        c2.metric("高优先级" if lang == "中文" else "High priority", int(actions[pri_col].astype(str).isin(["高", "High"]).sum()))
+        c3.metric("需复核" if lang == "中文" else "Review required", int(actions[cat_col].astype(str).isin(["数据需复核", "Data review required"]).sum()))
+        c4.metric("类别" if lang == "中文" else "Categories", len(cats))
+        tabs = st.tabs(cats[:10]) if cats else []
+        cols = [pri_col, cat_col, "tradingview_url", "code", "name", "lifecycle_stage", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en", "current_stage_score", "action_reason_cn" if lang == "中文" else "action_reason_en", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "quote_freshness_cn" if lang == "中文" else "quote_freshness_en"]
+        if tabs:
+            for tab, cat in zip(tabs, cats[:10]):
+                with tab:
+                    display_table(actions[actions[cat_col].astype(str) == cat], lang, cols, 420)
+        st.markdown("### " + ("完整动作清单" if lang == "中文" else "Full Action List"))
+        display_table(actions, lang, cols, 520)
+        download_button(actions, "today_action_list.csv", lang)
+
+elif page == "dashboard":
     dash = build_dashboard_view(pool, quotes)
     # Apply dashboard-specific filters without mixing historical A1 quality into listed-company ratings.
     dash_view = dash.copy()
@@ -1717,6 +1950,15 @@ elif page == "backtest":
         st.info("这个页面回答：高分组合是否更好、模型是否能避开破发、二级交易信号是否有用，以及失败样本在哪里。")
     else:
         st.info("This page answers whether high-score buckets perform better, whether the model avoids break-issue-price cases, whether secondary signals work, and where failures occur.")
+    # Rating distribution calibration
+    dash_for_cal = build_dashboard_view(pool, quotes)
+    rating_col_cal = "dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en"
+    dist = build_rating_distribution(dash_for_cal, rating_col_cal)
+    st.markdown("### " + ("评级分布校准" if lang == "中文" else "Rating Distribution Calibration"))
+    if not dist.empty:
+        display_table(dist, lang, ["rating_bucket", "sample_count", "sample_pct", "target_range", "calibration_note_cn" if lang == "中文" else "calibration_note_en"], 220)
+        st.caption("说明：A/B/C/D需要有区分度。A档过少说明阈值偏严；A档过多说明区分度不足；D档过多则要检查是否由数据缺失导致低分。" if lang == "中文" else "Interpretation: A/B/C/D should be well separated. Too few A names suggests a strict threshold; too many A names suggests weak separation; too many D names may reflect missing data.")
+    
     # Plain-language conclusion first.
     if not buckets.empty and "score_bucket" in buckets.columns:
         def bucket_val(bucket, col):
@@ -1785,6 +2027,51 @@ elif page == "memo":
         c4.metric("Path" if lang == "English" else "路径", row.get("path_label", ""))
         st.markdown(make_memo(row, lang))
         st.download_button(tr(lang, "export_memo"), make_memo(row, lang), file_name=f"memo_{code}.md", mime="text/markdown")
+
+elif page == "research":
+    st.subheader(T["pages"]["research"])
+    if lang == "中文":
+        st.info("这里提供人工基本面评分入口。页面上编辑后请下载 CSV，并上传/覆盖 deploy_data/manual_research_scores.csv；系统会把人工基本面分纳入 A1 公司稀缺性与基本面潜力维度。")
+    else:
+        st.info("This page provides a manual fundamental-score input. After editing, download the CSV and upload/replace deploy_data/manual_research_scores.csv; the score feeds into the A1 scarcity/fundamental-potential dimension.")
+    template_cols = ["code", "name", "manual_quality_rating", "manual_quality_score", "industry_view", "valuation_view", "research_comment", "updated_by", "updated_date"]
+    if manual_research.empty:
+        base = pd.DataFrame(columns=template_cols)
+        # seed with top A1 names to make editing easier
+        a1_company, _ = build_a1_company_view(pool)
+        seed = a1_company.sort_values("a1_quality_score", ascending=False, na_position="last").head(50)[[c for c in ["code", "name"] if c in a1_company.columns]].copy() if not a1_company.empty else pd.DataFrame(columns=["code", "name"])
+        for c in template_cols:
+            if c not in seed.columns:
+                seed[c] = ""
+        base = seed[template_cols]
+    else:
+        base = manual_research.copy()
+        for c in template_cols:
+            if c not in base.columns:
+                base[c] = ""
+        base = base[template_cols]
+    st.caption("评级可填：强 / 较强 / 中性 / 较弱 / 回避；也可直接填 0-100 的人工基本面分。" if lang == "中文" else "Rating can be: Strong / Positive / Neutral / Weak / Avoid; alternatively enter a 0-100 manual score.")
+    edited = st.data_editor(base, use_container_width=True, num_rows="dynamic", height=520)
+    st.download_button("下载人工评分CSV" if lang == "中文" else "Download manual score CSV", edited.to_csv(index=False, encoding="utf-8-sig"), "manual_research_scores.csv", "text/csv")
+    if not manual_research.empty:
+        st.markdown("### " + ("已接入人工评分的项目" if lang == "中文" else "Names with Manual Scores Applied"))
+        with_manual = pool[to_num(pool.get("manual_quality_score", pd.Series(np.nan, index=pool.index))).notna()].copy()
+        display_table(with_manual.sort_values("manual_quality_score", ascending=False, na_position="last"), lang, ["code", "name", "manual_quality_rating", "manual_quality_score", "industry_view", "valuation_view", "research_comment", "a1_quality_score", "a1_company_quality_score"], 360)
+
+elif page == "review":
+    st.subheader(T["pages"]["review"])
+    dash = build_dashboard_view(pool, quotes)
+    review = build_manual_review_pool(dash)
+    if lang == "中文":
+        st.info("本页把系统认为需要人工复核的项目集中列出：行情滞后、日期异常、发行价缺失、高解禁压力、高分但数据不足等。")
+    else:
+        st.info("This page centralizes names that need manual review: stale quotes, date anomalies, missing issue price, high lock-up pressure, high score with incomplete data, etc.")
+    if review.empty:
+        st.success("暂无重大人工复核项。" if lang == "中文" else "No major manual-review items.")
+    else:
+        cols = ["review_reason_cn" if lang == "中文" else "review_reason_en", "tradingview_url", "code", "name", "lifecycle_stage", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "dashboard_rating_cn" if lang == "中文" else "dashboard_rating_en", "current_stage_score", "quote_freshness_cn" if lang == "中文" else "quote_freshness_en", "score_confidence_cn" if lang == "中文" else "score_confidence_en", "date_check_cn" if lang == "中文" else "date_check_en", "issue_price", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en"]
+        display_table(review.sort_values("current_stage_score", ascending=False, na_position="last"), lang, cols, 620)
+        download_button(review, "manual_review_queue.csv", lang)
 
 elif page == "quality":
     st.subheader(tr(lang, "data_quality"))
