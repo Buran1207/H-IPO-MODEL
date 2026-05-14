@@ -5,7 +5,7 @@ iFind 16:30 低额度日度更新引擎。
 
 设计目标：
 1) 不需要 PyCharm；双击 bat 即可运行。
-2) 尽量少消耗 iFind 额度：静态表走近端窗口，行情走增量，快照只拉 2024+ IPO 股票池。
+2) 尽量少消耗 iFind 额度：所有股票类API统一先生成2024+ IPO股票池，再分批取数；行情走增量，静态表走近端窗口。
 3) 原始 iFind 结果先落地缓存；任何失败都保留昨日数据并写日志。
 4) 字段映射不确定时不强行覆盖主数据，先输出 raw inventory/status，避免误写。
 
@@ -176,7 +176,7 @@ def load_ifind_module():
         return iFinDPy
     except Exception:
         try:
-            from iFinDPy import THS_iFinDLogin, THS_iFinDLogout, THS_DR, THS_HQ, THS_RQ  # type: ignore
+            from iFinDPy import THS_iFinDLogin, THS_iFinDLogout, THS_DR, THS_HQ, THS_RQ, THS_BD  # type: ignore
             class M:
                 pass
             m = M()
@@ -185,6 +185,7 @@ def load_ifind_module():
             m.THS_DR = THS_DR
             m.THS_HQ = THS_HQ
             m.THS_RQ = THS_RQ
+            m.THS_BD = THS_BD
             return m
         except Exception:
             return None
@@ -218,14 +219,17 @@ def normalize_code(x: Any) -> str | None:
         base = s[:-3]
     else:
         base = s
+    # 0008_1.HK / 0090_2.HK 等为iFind衍生/特殊条目，不能把数字拼成0081.HK。
+    if "_" in base:
+        return None
     digits = "".join(ch for ch in base if ch.isdigit())
-    if not digits:
+    if not digits or len(digits) > 4:
         return None
     return f"{digits.zfill(4)}.HK"
 
 
 def guess_code_column(df: pd.DataFrame) -> str | None:
-    candidates = ["code", "股票代码", "证券代码", "同花顺代码", "jydm", "thscode", "THSCODE", "代码"]
+    candidates = ["code", "股票代码", "证券代码", "同花顺代码", "jydm", "jydm_mc", "thscode", "THSCODE", "代码", "p05310_f001", "p03764_f001", "p04477_f001", "p05551_f001"]
     for c in candidates:
         if c in df.columns:
             return c
@@ -361,11 +365,15 @@ def fetch_static_source(ctx: RunContext, ifind: Any, name: str, section: str, po
     end_s = end.strftime("%Y%m%d")
     if func == "THS_DR":
         args = update_dr_args_for_window(args, start_s, end_s)
+    if ctx.dry_run:
+        rows.append({"source": name, "status": "dry_run", "rows": len(old), "new_rows": 0, "message": f"将调用{func}，窗口{start_s}至{end_s}；不写缓存"})
+        return
     try:
         log(ctx, f"更新 {name}: {func}")
         new = call_ifind(ctx, ifind, func, args)
         merged = merge_cache(old, new, policy)
         write_csv(merged, out_path)
+        deploy_raw_copy(ctx, name, merged)
         rows.append({"source": name, "status": "ok", "rows": len(merged), "new_rows": len(new), "message": "已更新缓存"})
     except Exception as exc:
         log(ctx, f"更新 {name} 失败：{exc}")
@@ -460,6 +468,117 @@ def fetch_snapshot(ctx: RunContext, ifind: Any, name: str, section: str, rows: l
     write_csv(new, ctx.deploy_dir / "ifind_close_snapshot_raw.csv")
     rows.append({"source": name, "status": "ok" if not new.empty else "no_new_data", "rows": len(new), "new_rows": len(new), "message": f"股票池{len(codes)}只"})
 
+
+
+def replace_dates_in_string(value: str, today: date) -> str:
+    """把超级命令样例参数里的固定日期替换为本次更新日。
+
+    适用于 THS_BD 第三个参数，例如：2026-05-15 或 20260515。
+    不改变空参数和非日期参数。
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    ymd_dash = today.strftime("%Y-%m-%d")
+    ymd = today.strftime("%Y%m%d")
+    value = re.sub(r"\d{4}-\d{2}-\d{2}", ymd_dash, value)
+    value = re.sub(r"(?<!\d)20\d{6}(?!\d)", ymd, value)
+    return value
+
+
+def update_hq_args_for_window(args: tuple[Any, ...], start: date, end: date) -> tuple[Any, ...]:
+    part_args = list(args)
+    if len(part_args) >= 5:
+        part_args[-2] = start.strftime("%Y-%m-%d")
+        part_args[-1] = end.strftime("%Y-%m-%d")
+    return tuple(part_args)
+
+
+def deploy_raw_copy(ctx: RunContext, name: str, df: pd.DataFrame) -> None:
+    if df is None:
+        return
+    write_csv(df, ctx.deploy_dir / f"ifind_{name}_raw.csv")
+
+
+def fetch_index_quotes(ctx: RunContext, ifind: Any, name: str, section: str, rows: list[dict[str, Any]]) -> None:
+    """指数行情：固定指数代码，不使用IPO股票池。"""
+    sections = load_sections()
+    body = find_section_body(sections, section)
+    call = extract_first_ths_call(body)
+    out_path = ctx.cache_dir / f"{name}.csv"
+    old = read_csv_smart(out_path)
+    if call is None:
+        rows.append({"source": name, "status": "skipped", "rows": len(old), "message": "未找到指数行情API命令"})
+        return
+    func, args = call
+    today = ctx.today
+    backfill_days = int(ctx.config.get("default_quote_backfill_days", 5))
+    start_date = today - timedelta(days=backfill_days)
+    if not old.empty:
+        dcol = guess_date_column(old)
+        if dcol:
+            max_d = pd.to_datetime(old[dcol], errors="coerce").max()
+            if pd.notna(max_d):
+                start_date = min(max_d.date() + timedelta(days=1), today - timedelta(days=backfill_days))
+    args = update_hq_args_for_window(args, start_date, today)
+    if ctx.dry_run:
+        rows.append({"source": name, "status": "dry_run", "rows": len(old), "new_rows": 0, "message": f"将更新固定指数，{start_date}至{today}"})
+        return
+    try:
+        log(ctx, f"更新指数行情 {name}: {func}")
+        new = call_ifind(ctx, ifind, func, args)
+        merged = merge_cache(old, new, "append_by_code_date")
+        write_csv(merged, out_path)
+        deploy_raw_copy(ctx, name, merged)
+        rows.append({"source": name, "status": "ok" if not new.empty else "no_new_data", "rows": len(merged), "new_rows": len(new), "message": f"固定指数；{start_date}至{today}"})
+    except Exception as exc:
+        log(ctx, f"更新指数行情失败：{exc}")
+        rows.append({"source": name, "status": "failed_keep_old", "rows": len(old), "new_rows": 0, "message": str(exc)[:250]})
+
+
+def fetch_bd_source(ctx: RunContext, ifind: Any, name: str, section: str, rows: list[dict[str, Any]]) -> None:
+    """基础数据/特色数据类：统一使用2024+ IPO股票池替换样例代码，再分批调用 THS_BD。"""
+    sections = load_sections()
+    body = find_section_body(sections, section)
+    call = extract_first_ths_call(body)
+    out_path = ctx.cache_dir / f"{name}.csv"
+    old = read_csv_smart(out_path)
+    codes = get_ipo_code_pool(ctx)
+    if not codes:
+        rows.append({"source": name, "status": "skipped", "rows": len(old), "message": "未识别到2024+ IPO股票池"})
+        return
+    if call is None:
+        rows.append({"source": name, "status": "skipped", "rows": len(old), "message": "未找到API命令，保留空接口"})
+        return
+    func, args = call
+    if func != "THS_BD":
+        rows.append({"source": name, "status": "skipped", "rows": len(old), "message": f"该源预期THS_BD，实际为{func}"})
+        return
+    batch = int(ctx.config.get("batch_size_bd", 80))
+    if ctx.dry_run:
+        rows.append({"source": name, "status": "dry_run", "rows": len(old), "new_rows": 0, "message": f"将按2024+ IPO股票池分批拉取{len(codes)}只；batch={batch}"})
+        return
+    all_new = []
+    for i in range(0, len(codes), batch):
+        part = codes[i:i+batch]
+        part_args = list(args)
+        part_args[0] = ",".join(part)
+        if len(part_args) >= 3 and isinstance(part_args[2], str):
+            part_args[2] = replace_dates_in_string(part_args[2], ctx.today)
+        try:
+            log(ctx, f"BD批次 {name} {i//batch+1}: {len(part)}只")
+            all_new.append(call_ifind(ctx, ifind, func, tuple(part_args)))
+        except Exception as exc:
+            log(ctx, f"BD批次失败 {name}: {exc}")
+            if ctx.config.get("max_retry", 1):
+                try:
+                    all_new.append(call_ifind(ctx, ifind, func, tuple(part_args)))
+                except Exception:
+                    pass
+    new = pd.concat(all_new, ignore_index=True) if all_new else pd.DataFrame()
+    merged = merge_cache(old, new, "merge_by_code")
+    write_csv(merged, out_path)
+    deploy_raw_copy(ctx, name, merged)
+    rows.append({"source": name, "status": "ok" if not new.empty else "no_new_data", "rows": len(merged), "new_rows": len(new), "message": f"股票池{len(codes)}只；统一分批THS_BD"})
 
 def import_offline_exports(ctx: RunContext, rows: list[dict[str, Any]]) -> None:
     ctx.export_dir.mkdir(exist_ok=True)
@@ -566,6 +685,17 @@ def main() -> None:
                 start = start_static
                 end2 = today
             fetch_static_source(ctx, ifind, name, meta.get("section", ""), meta.get("cache_policy", "merge_incremental"), rows, start, end2)
+        # 指数行情：固定指数代码，不进入股票池替换。
+        if "market_index_quotes" in sources:
+            fetch_index_quotes(ctx, ifind, "market_index_quotes", sources["market_index_quotes"].get("section", ""), rows)
+
+        # 所有股票类基础数据/特色数据：统一先生成2024+ IPO股票池，再分批替换样例代码。
+        for name in ["company_profile", "financial_summary", "valuation_metrics", "shareholders", "southbound_holding"]:
+            meta = sources.get(name, {})
+            if meta:
+                fetch_bd_source(ctx, ifind, name, meta.get("section", ""), rows)
+
+        # 行情类同样使用2024+ IPO股票池分批替换全港股主板代码，但函数仍保持 THS_HQ / THS_RQ。
         if "daily_quotes" in sources:
             fetch_quotes(ctx, ifind, "daily_quotes", sources["daily_quotes"].get("section", ""), rows)
         if "close_snapshot" in sources:
@@ -578,6 +708,7 @@ def main() -> None:
 
     if args.build_signals:
         run_subprocess(ctx, [sys.executable, "scripts/build_technical_signals.py"], "build_technical_signals", rows)
+        run_subprocess(ctx, [sys.executable, "scripts/build_lockup_risk.py"], "build_lockup_risk", rows)
         # 现有投资数据脚本较轻，保留兼容。
         run_subprocess(ctx, [sys.executable, "scripts/build_investment_dataset.py"], "build_investment_dataset", rows)
 

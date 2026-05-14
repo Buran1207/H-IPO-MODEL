@@ -456,10 +456,10 @@ def build(input_dir: str | Path, outdir: str | Path) -> None:
         pool = coalesce_suffix_columns(pool)
         today = pd.Timestamp.today().normalize()
         ld = pd.to_datetime(pool.get("listing_date"), errors="coerce")
-        pool["lifecycle_stage"] = pool.get("lifecycle_stage", pd.Series([pd.NA] * len(pool))).fillna("已上市/半新股")
+        pool["lifecycle_stage"] = pool.get("lifecycle_stage", pd.Series([pd.NA] * len(pool))).fillna("已上市")
         pool.loc[ld.isna() & pool.get("application_status", pd.Series([pd.NA] * len(pool))).notna(), "lifecycle_stage"] = "A1/上市申请中"
         pool.loc[ld.notna() & (ld > today), "lifecycle_stage"] = "招股/待上市"
-        pool.loc[ld.notna() & (ld <= today), "lifecycle_stage"] = "已上市/半新股"
+        pool.loc[ld.notna() & (ld <= today), "lifecycle_stage"] = "已上市"
 
         sub = pd.to_numeric(pool.get("public_subscription_multiple"), errors="coerce")
         one = pd.to_numeric(pool.get("one_lot_success_rate_pct"), errors="coerce")

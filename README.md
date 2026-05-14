@@ -162,3 +162,31 @@ docs/technical_analysis_methodology.md
 docs/windows_filename_fix.md
 docs/next_version_plan.md
 ```
+
+## v7 统一取数模式说明
+
+本版开始，所有股票类 API 统一采用同一模式：
+
+```text
+先用 IPO 首发信息生成 2024+ 已上市股票池
+→ 清洗正式港股代码，过滤 H 临时代码、_1/_2 衍生代码、非正式交易代码
+→ 分批替换超级命令里的样例股票或全港股代码
+→ 本地缓存 + 增量更新
+```
+
+- 港股日行情继续使用 `THS_HQ`，但不再使用全港股主板长列表，而是替换成 2024+ IPO 股票池。
+- 港股收盘快照继续使用 `THS_RQ`，同样替换成 2024+ IPO 股票池。
+- 行业、财务、股权结构、南向持股继续使用 `THS_BD`，把样例 `3625.HK` 替换成 2024+ IPO 股票池。
+- 指数行情不使用股票池，固定更新 HSI/HSTECH/HSCE/HSCI。
+
+先跑模拟检查，不消耗 iFind 额度：
+
+```bat
+run_daily_update_dry_run.bat
+```
+
+确认无误后，16:30 后跑真实更新：
+
+```bat
+run_daily_update_low_quota.bat
+```

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""计算港股 IPO/次新交易池专业技术指标和交易触发条件。
+"""计算港股 IPO/上市后交易池专业技术指标和交易触发条件。
 
 输入优先级：
 1. deploy_data/ipo_daily_quotes_180d.csv 旧免费行情标准表
@@ -51,8 +51,10 @@ def norm_code(x):
         base = s[:-3]
     else:
         base = s
+    if "_" in base:
+        return None
     digits = "".join(ch for ch in base if ch.isdigit())
-    if not digits:
+    if not digits or len(digits) > 4:
         return None
     return f"{digits.zfill(4)}.HK"
 
@@ -75,7 +77,7 @@ def pick_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
 def normalize_quotes(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["code","date","open","high","low","close","volume","amount","source"])
-    c_code = pick_col(df, ["code", "code_raw", "thscode", "THSCODE", "jydm", "股票代码", "证券代码", "同花顺代码"])
+    c_code = pick_col(df, ["code", "code_raw", "thscode", "THSCODE", "jydm", "股票代码", "证券代码", "同花顺代码", "p05310_f001", "p03764_f001"])
     c_date = pick_col(df, ["date", "time", "tradeDate", "交易日期", "日期"])
     c_open = pick_col(df, ["open", "开盘价"])
     c_high = pick_col(df, ["high", "最高价"])

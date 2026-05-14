@@ -21,11 +21,17 @@ THS_DR('p03764','sdate=20240101;edate=20280101;hblx=港币','jydm:Y,jydm_mc:Y,p0
 THS_DR('p03412','sdate=20240101;edate=20260514;p0=T004739399','p03412_f001:Y,p03412_f002:Y,p03412_f003:Y,p03412_f004:Y,p03412_f005:Y,p03412_f006:Y,p03412_f007:Y,p03412_f008:Y','format:dataframe')
 【11 账簿管理人】iFind生成代码：#账簿管理人参与度-明细,输入参数:起始日期(sdate)、结束日期(edate)、账簿管理人id(p0:p03413_f009)-iFinD数据接口
 THS_DR('p03414','sdate=20240101;edate=20260514;p0=T004739399','p03414_f001:Y,p03414_f002:Y,p03414_f003:Y,p03414_f004:Y,p03414_f005:Y,p03414_f006:Y,p03414_f007:Y','format:dataframe')
-【12 港股指数行情】iFind生成代码：
-【13 行业分类/概念标签】iFind生成代码：
-【14 财务摘要】iFind生成代码：
+
+【12 港股指数行情】iFind生成代码：#历史行情-指数-前收盘价;开盘价;最高价;最低价;收盘价;涨跌幅;成交量;成交额-iFinD数据接口
+THS_HQ('HSCE.HK,HSCI.HK,HSI.HK,HSTECH.HK','preClose;open;high;low;close;changeRatio;volume;amount','','2024-01-01','2026-05-15')
+【13 行业分类/概念标签】iFind生成代码：#基础数据-全球数据-所属同花顺行业名称;公司简介;是否触发回拨机制;所属概念;AH股溢价率-iFinD数据接口
+THS_BD('3625.HK','ths_industry;corp_profile;ths_is_allback_mech_global;the_concept;ah_premium_rate','100,2026-05-15;;;;2026-05-15')
+【14 财务摘要】iFind生成代码：#基础数据-全球数据-总营业收入;销售毛利率;净利润;营业总收入(同比增长率);归属母公司股东的净利润(同比增长率);经营活动产生的现金流量净额等-iFinD数据接口
+THS_BD('3625.HK','total_oi;gross_selling_rate;profit_after_tax;operating_revenue_yoy;np_atsopc_yoy;ncf_from_oa;asset_liab_ratio;rad_expense_to_total_income','104,100,OC;104;104,100,OC;104;104;104,100,OC;104;104')
 【15 估值指标】iFind生成代码：
-【16 股权结构/主要股东】iFind生成代码：
-【17 南向持股】iFind生成代码：
+【16 股权结构/主要股东】iFind生成代码：#基础数据-全球数据-股东名称;股东持股数量;股东持股比例;股东持股股份性质-iFinD数据接口
+THS_BD('3625.HK','holder_held_num;holder_held_ratio;holder_held_shares_nature;hks_held_num','2026-05-15,1;2026-05-15,1;2026-05-15,1;2026-05-15,1')
+【17 南向持股】iFind生成代码：#基础数据-全球数据-港股通持股数量;沪市港股通持股数量;深市港股通持股数量;港股通持股占比;沪市港股通持股占比;深市港股通持股占比;港股通持股/香港股-iFinD数据接口
+THS_BD('3625.HK','hks_held_num;hksh_held_num;hksz_held_num;hks_held_ratio;hksh_held_ratio;hksz_held_ratio;ah_stock_hks_ratia','2026-05-15;2026-05-15;2026-05-15;2026-05-15;2026-05-15;2026-05-15;2026-05-15')
 【18 公告目录/事件日历】iFind生成代码：
 【19 业绩日历】iFind生成代码：

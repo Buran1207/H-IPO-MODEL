@@ -20,7 +20,7 @@ def pct(x):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="根据0-180D日行情生成半新股路径标签。")
+    ap = argparse.ArgumentParser(description="根据0-180D日行情生成上市后路径标签。")
     ap.add_argument("--pool", default="deploy_data/ipo_decision_pool.csv")
     ap.add_argument("--quotes", default="deploy_data/ipo_daily_quotes_180d.csv")
     ap.add_argument("--out", default="deploy_data/ipo_post_listing_paths.csv")

@@ -80,7 +80,7 @@ TEXT = {
         "language": "语言 / Language",
         "profile": "权重方案",
         "min_score": "最低综合分",
-        "stage": "生命周期阶段",
+        "stage": "阶段",
         "rating": "综合评级",
         "industry": "行业",
         "search": "搜索代码/名称",
@@ -353,14 +353,14 @@ def add_listing_age_and_path(df: pd.DataFrame) -> pd.DataFrame:
     out["listed_days"] = (today - listing).dt.days
     def age_cn(x):
         if pd.isna(x): return "未上市"
-        if x <= 30: return "新上市观察期(0-30D)"
-        if x <= 180: return "半新股交易期(31-180D)"
-        return "次新延伸期(180D+)"
+        if x <= 30: return "0-30D"
+        if x <= 180: return "31-180D"
+        return "180D+"
     def age_en(x):
         if pd.isna(x): return "Unlisted"
-        if x <= 30: return "New listing watch (0-30D)"
-        if x <= 180: return "Newly listed trading (31-180D)"
-        return "Extended post-IPO (180D+)"
+        if x <= 30: return "0-30D"
+        if x <= 180: return "31-180D"
+        return "180D+"
     out["listed_age_bucket_cn"] = out["listed_days"].map(age_cn)
     out["listed_age_bucket_en"] = out["listed_days"].map(age_en)
     issue = to_num(out.get("issue_price", pd.Series(np.nan, index=out.index)))
@@ -402,7 +402,7 @@ def add_listing_age_and_path(df: pd.DataFrame) -> pd.DataFrame:
             elif pd.notna(dd) and dd <= -0.30:
                 labels_cn.append("高位回撤预警"); labels_en.append("High-level drawdown alert"); notes_cn.append("从行情高点回撤≥30%"); notes_en.append("Drawdown from quote high ≥30%")
             else:
-                labels_cn.append("次新延伸观察"); labels_en.append("Extended post-IPO watch"); notes_cn.append("上市180日后继续按趋势、成交和解禁后再定价观察"); notes_en.append("After 180D, monitor trend, turnover and post-lock-up repricing")
+                labels_cn.append("180D+观察"); labels_en.append("180D+ watch"); notes_cn.append("上市180日后继续按趋势、成交和解禁后再定价观察"); notes_en.append("After 180D, monitor trend, turnover and post-lock-up repricing")
             continue
         # 0-180D quantitative path rules
         v_d1 = d1.loc[idx] if idx in d1.index else np.nan
@@ -932,6 +932,39 @@ def build_a1_company_view(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
     return latest, history
 
 
+
+def normalize_stage_by_listing_date(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize stage wording and force listed status based on listing_date.
+
+    Rules:
+    - `lifecycle_stage` is a broad stage label only.
+    - Once listing_date <= today, the company is `已上市` / `Listed` regardless of any stale IPO application status.
+    - Terms such as 半新股 / 次新延伸 are not used in the UI.
+    """
+    out = df.copy()
+    today = pd.Timestamp.today().normalize()
+    listing = safe_date_series(out, "listing_date")
+    if "lifecycle_stage" not in out.columns:
+        out["lifecycle_stage"] = pd.NA
+    stage = out["lifecycle_stage"].astype("string")
+    # Clean old labels left in historical CSVs.
+    replace_map = {
+        "已上市/半新股": "已上市",
+        "已上市半新股": "已上市",
+        "半新股": "已上市",
+        "半新股交易期(31-180D)": "31-180D",
+        "次新延伸期(180D+)": "180D+",
+        "新上市观察期(0-30D)": "0-30D",
+    }
+    stage = stage.replace(replace_map)
+    listed_mask = listing.notna() & (listing <= today)
+    future_mask = listing.notna() & (listing > today)
+    # Stale exports may still say 通过聆讯/招股/待上市 after the listing date arrives.
+    stage.loc[listed_mask] = "已上市"
+    stage.loc[future_mask] = stage.loc[future_mask].fillna("招股/待上市")
+    out["lifecycle_stage"] = stage
+    return out
+
 def enrich_dynamic(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for c in ["listing_date", "application_date", "first_application_date", "hearing_date", "lockup_end_date", "next_unlock_date", "cornerstone_unlock_date", "controller_first_window_date", "controller_second_window_date"]:
@@ -940,6 +973,9 @@ def enrich_dynamic(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
     for c in ["overall_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "cornerstone_amount_hkd", "cornerstone_count", "avg20_trading_value_hkd_est", "max_180_ret", "max_60_ret", "d1_close_ret"]:
         if c in out.columns:
             out[c] = to_num(out[c])
+
+    # Force current stage from listing_date so stale iFind/CSV status does not keep listed stocks as "待上市".
+    out = normalize_stage_by_listing_date(out)
 
     # Re-estimate avg 20D trading value from quotes if available.
     if not quotes.empty and {"code", "close", "volume"}.issubset(quotes.columns):
@@ -1324,7 +1360,7 @@ def make_memo(row: pd.Series, lang: str) -> str:
 - 扣分/不确定性：{g('a1_negative_reasons_cn')}
 
 ## 三、项目阶段与发行结构
-- 生命周期阶段：{g('lifecycle_stage')}
+- 阶段：{g('lifecycle_stage')}
 - 申请状态：{g('application_status')}
 - 上市日：{g('listing_date')}
 - 发行价：{g('issue_price')}
@@ -1385,7 +1421,7 @@ Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 - Negative / Uncertain Factors: {g('a1_negative_reasons_en')}
 
 ## 3. Stage and Deal Structure
-- Lifecycle Stage: {g('lifecycle_stage')}
+- Stage: {g('lifecycle_stage')}
 - Application Status: {g('application_status')}
 - Listing Date: {g('listing_date')}
 - Issue Price: {g('issue_price')}
