@@ -1,104 +1,43 @@
-# 港股 IPO / 二级交易投资决策系统
+# 港股 IPO / 二级交易投资决策系统 v8
 
-这是一个面向港股 IPO、A1 项目、招股期、暗盘/首日，以及所有 2024 年后上市公司的二级交易决策系统。
+本版重点是：评分透明化、二级交易评分重构、解禁合并为二级风险扣分、行情更新状态解释。
 
-## 本版修复
+## 本版核心变化
 
-上一版包含中文 `.bat` 文件名，部分 Windows 解压环境会显示乱码。本版已经全部改成英文文件名，避免乱码：
+1. **三阶段评分规则内嵌到各自页面**
+   - A1项目观察池：展示 A1 项目质量分的维度、权重、量化方法。
+   - 招股期参与决策：展示发行定价、需求热度、资金效率、基石、发行结构等量化规则。
+   - 二级市场交易状态机：展示技术状态如何转成评分、买入触发和卖出触发。
 
-```text
+2. **解禁不再单独评分**
+   - 解禁只作为二级交易评分中的风险扣分项和动作限制。
+   - 正式评分只使用 iFind 精确解禁明细。
+   - 上市日 + 6/12个月估算只作为复核提示，不进入正式二级评分。
+
+3. **二级交易评分重构**
+   - 二级评分 = 技术结构 + 量价确认 + IPO锚点 + 相对强弱 + 流动性 - 风险扣分。
+   - 技术指标先转为交易状态，再转为分数和动作。
+   - 状态包括：趋势确认、放量突破、缩量回踩、深V确认、强势但过热、放量滞涨、破发弱势、高位回撤预警。
+
+4. **行情新鲜度改为更新状态**
+   - 页面显示行情来源、最新交易日、更新状态、异常原因。
+   - iFind 是正式行情主源，Yahoo/Stooq 只作为兜底。
+
+5. **iFind 路径支持**
+   - `run_daily_update_low_quota.bat` 和 `run_daily_update_dry_run.bat` 默认加入：
+     `C:\iFinD\THSDataInterface_Windows\bin\x64`
+   - 若你的 iFind 安装路径不同，请修改 bat 文件顶部的 `IFIND_API_DIR`。
+
+## 本地运行顺序
+
+```bat
 00_setup_env.bat
-run_daily_update_low_quota.bat
 run_daily_update_dry_run.bat
-process_ifind_exports_offline.bat
-build_ifind_field_mapping_offline.bat
-```
-
-## 本版新增：iFind 字段映射准备
-
-为避免为了 `p05310_f001`、`p03764_f001`、`p03412_f001` 这类字段名反复消耗 iFind API 额度，本版新增离线字段映射脚本：
-
-```text
-scripts/build_ifind_field_mapping_from_exports.py
-build_ifind_field_mapping_offline.bat
-```
-
-用法：把之前 iFind 原始导出的 Excel/CSV 放入 `ifind_exports/`，然后双击：
-
-```text
-build_ifind_field_mapping_offline.bat
-```
-
-系统会输出：
-
-```text
-config/ifind_field_mapping_auto.csv
-deploy_data/ifind_field_mapping_auto.csv
-```
-
-## 第一次使用
-
-双击：
-
-```text
-00_setup_env.bat
-```
-
-## 每天 16:30 更新
-
-双击：
-
-```text
 run_daily_update_low_quota.bat
-```
-
-低额度策略：
-
-```text
-1. 静态表只拉近端窗口。
-2. 日行情尽量增量拉取。
-3. 收盘快照只拉 2024+ IPO 股票池。
-4. 失败不无限重试，保留昨日数据并写日志。
-```
-
-如果只是想测试流程、不消耗 iFind API 额度，双击：
-
-```text
-run_daily_update_dry_run.bat
-```
-
-## 不调用 API 的兜底方式
-
-把 iFind 导出的 Excel/CSV 放入：
-
-```text
-ifind_exports/
-```
-
-然后双击：
-
-```text
-process_ifind_exports_offline.bat
-```
-
-这个流程会先生成字段映射，再处理离线导出文件，不调用 iFind API，不消耗额度。
-
-## 本地运行看页面
-
-```bash
-pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## Streamlit Cloud 部署
-
-将本项目根目录上传 GitHub，并在 Streamlit Cloud 中选择：
-
-```text
-streamlit_app.py
-```
-
-## iFind 账号配置
+## 账号文件
 
 复制：
 
@@ -112,81 +51,21 @@ config/local_ifind_credentials.example.ini
 config/local_ifind_credentials.ini
 ```
 
-填写账号密码。该文件已加入 `.gitignore`，不会上传 GitHub。
+内容格式：
 
-也可以使用环境变量：
-
-```text
-IFIND_USERNAME
-IFIND_PASSWORD
+```ini
+[ifind]
+username=你的iFind账号
+password=你的iFind密码
 ```
 
-## 重要文件
+不要把 `local_ifind_credentials.ini` 上传 GitHub。
 
-```text
-config/ifind_api_commands.txt                 # 已收录 iFind API 命令
-config/ifind_update_config.json               # 更新频率、缓存、窗口和批量参数
-config/ifind_field_mapping_auto.csv           # 离线反推字段映射输出
-scripts/ifind_low_quota_daily_update.py       # 主更新引擎
-scripts/build_ifind_field_mapping_from_exports.py # 字段映射反推脚本
-scripts/build_technical_signals.py            # 专业技术分析模块
-logs/update_YYYYMMDD.log                      # 每次更新日志
-deploy_data/data_update_status.csv            # 页面展示的数据更新状态
-```
+## 重点查看页面
 
-## 下一版处理清单
-
-已经写入：
-
-```text
-docs/next_version_plan.md
-```
-
-重点包括：
-
-```text
-1. iFind字段映射接入主流程。
-2. 精确解禁事件标准化。
-3. 解禁影响规律模型。
-4. 专业技术评分真正纳入二级交易评分。
-5. 评分科学性验证。
-6. 低额度日度更新增强。
-```
-
-更多说明见：
-
-```text
-docs/daily_update_engine.md
-docs/ifind_api_low_quota_policy.md
-docs/technical_analysis_methodology.md
-docs/windows_filename_fix.md
-docs/next_version_plan.md
-```
-
-## v7 统一取数模式说明
-
-本版开始，所有股票类 API 统一采用同一模式：
-
-```text
-先用 IPO 首发信息生成 2024+ 已上市股票池
-→ 清洗正式港股代码，过滤 H 临时代码、_1/_2 衍生代码、非正式交易代码
-→ 分批替换超级命令里的样例股票或全港股代码
-→ 本地缓存 + 增量更新
-```
-
-- 港股日行情继续使用 `THS_HQ`，但不再使用全港股主板长列表，而是替换成 2024+ IPO 股票池。
-- 港股收盘快照继续使用 `THS_RQ`，同样替换成 2024+ IPO 股票池。
-- 行业、财务、股权结构、南向持股继续使用 `THS_BD`，把样例 `3625.HK` 替换成 2024+ IPO 股票池。
-- 指数行情不使用股票池，固定更新 HSI/HSTECH/HSCE/HSCI。
-
-先跑模拟检查，不消耗 iFind 额度：
-
-```bat
-run_daily_update_dry_run.bat
-```
-
-确认无误后，16:30 后跑真实更新：
-
-```bat
-run_daily_update_low_quota.bat
-```
+- ③ A1项目观察池
+- ④ 招股期参与决策
+- ⑥ 二级市场交易状态机
+- ⑦ 二级风险：解禁供给解释
+- ⑧ 评分体系与模型校准
+- ⑬ 数据更新

@@ -2,6 +2,14 @@
 chcp 65001 >nul
 cd /d %~dp0
 
+rem Optional iFind Python API path. Adjust this if your iFind is installed elsewhere.
+set "IFIND_API_DIR=C:\iFinD\THSDataInterface_Windows\bin\x64"
+if exist "%IFIND_API_DIR%\iFinDPy.py" (
+    set "PYTHONPATH=%IFIND_API_DIR%;%PYTHONPATH%"
+    set "PATH=%IFIND_API_DIR%;%PATH%"
+)
+
+
 echo ============================================
 echo  Dry run only: no iFind API call, no quota usage
 echo ============================================
