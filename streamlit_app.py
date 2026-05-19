@@ -89,18 +89,18 @@ TEXT = {
         "pages": {
             "actions": "① 今日决策清单",
             "dashboard": "② 决策总览",
-            "a1": "③ A1项目观察池",
-            "ipo": "④ 招股期参与决策",
+            "a1": "③ 一级市场 / IPO项目决策",
+            "ipo": "④ 招股期参与决策（已合并到一级市场）",
             "gray": "⑤ 暗盘与首日交易",
-            "post": "⑥ 二级市场交易状态机",
-            "lockup": "⑦ 二级风险：解禁供给解释",
-            "weights": "⑧ 评分体系与模型校准",
-            "backtest": "⑨ 回测与有效性验证",
-            "memo": "⑩ 单票投资备忘录",
-            "research": "⑪ 人工研究评分",
-            "review": "⑫ 人工复核池",
-            "update": "⑬ 数据更新",
-            "quality": "⑭ 数据质量",
+            "post": "④ 已上市 / 二级交易决策",
+            "lockup": "⑦ 二级风险：解禁供给解释（已并入二级）",
+            "weights": "⑤ 评分体系与模型校准",
+            "backtest": "⑥ 回测与有效性验证",
+            "memo": "⑦ 单票投资备忘录",
+            "research": "⑪ 人工研究评分（已合并）",
+            "review": "⑧ 人工复核池",
+            "update": "⑨ 数据更新",
+            "quality": "⑩ 数据质量",
         },
         "metric_total": "样本数",
         "metric_a1": "A1/申请项目",
@@ -131,18 +131,18 @@ TEXT = {
         "pages": {
             "actions": "① Today's Action List",
             "dashboard": "② Decision Dashboard",
-            "a1": "③ A1 Project Watchlist",
-            "ipo": "④ IPO Participation Decision",
+            "a1": "③ Primary Market / IPO Project Decision",
+            "ipo": "④ IPO Participation Decision (merged into Primary)",
             "gray": "⑤ Gray Market & First Day",
-            "post": "⑥ Secondary-market Trading State Machine",
-            "lockup": "⑦ Secondary Risk: Lock-up Supply",
-            "weights": "⑧ Scoring System & Model Calibration",
-            "backtest": "⑨ Backtest & Effectiveness",
-            "memo": "⑩ Single-name Investment Memo",
-            "research": "⑪ Manual Research Scores",
-            "review": "⑫ Manual Review Queue",
-            "update": "⑬ Data Update",
-            "quality": "⑭ Data Quality",
+            "post": "④ Listed / Secondary Trading Decision",
+            "lockup": "⑦ Secondary Risk: Lock-up Supply (inside Secondary)",
+            "weights": "⑤ Scoring System & Model Calibration",
+            "backtest": "⑥ Backtest & Effectiveness",
+            "memo": "⑦ Single-name Investment Memo",
+            "research": "⑪ Manual Research Scores (merged)",
+            "review": "⑧ Manual Review Queue",
+            "update": "⑨ Data Update",
+            "quality": "⑩ Data Quality",
         },
         "metric_total": "Samples",
         "metric_a1": "A1 / Filing projects",
@@ -217,6 +217,12 @@ COL_EN = {
 
 
 COL_ZH.update({
+
+    "manual_quality_adjustment": "人工研究调整", "manual_rating": "人工评级", "score_confidence_cn": "评分置信度", "score_confidence_en": "Score Confidence",
+    "why_not_higher_cn": "为什么不是更高评级", "why_not_higher_en": "Why Not Higher",
+    "secondary_custom_score_v9": "二级自定义分", "secondary_rating_v9_cn": "二级评级", "secondary_rating_v9_en": "Secondary Rating",
+    "unlock_penalty_points": "解禁扣分", "data_penalty_points": "数据扣分", "risk_penalty_points": "风险扣分",
+    "kdj_k": "KDJ-K", "kdj_d": "KDJ-D", "kdj_j": "KDJ-J", "kdj_signal": "KDJ状态", "boll_signal": "BOLL状态", "obv_signal": "OBV状态", "mfi14": "MFI14",
     "action_category_cn": "动作分类", "action_priority_cn": "优先级", "action_reason_cn": "触发原因", "review_reason_cn": "复核原因",
     "manual_quality_rating": "人工基本面评级", "manual_quality_score": "人工基本面分", "industry_view": "行业观点", "valuation_view": "估值观点", "research_comment": "研究备注", "updated_by": "更新人", "updated_date": "更新日期",
     "rating_bucket": "评级档位", "sample_count": "样本数", "sample_pct": "样本占比", "target_range": "建议占比", "calibration_note_cn": "校准提示",
@@ -237,6 +243,12 @@ COL_ZH.update({
     "secondary_rating_cn": "二级评级", "secondary_action_cn": "二级操作建议",
 })
 COL_EN.update({
+
+    "manual_quality_adjustment": "Manual Research Adj.", "manual_rating": "Manual Rating", "score_confidence_cn": "Score Confidence", "score_confidence_en": "Score Confidence",
+    "why_not_higher_cn": "Why Not Higher", "why_not_higher_en": "Why Not Higher",
+    "secondary_custom_score_v9": "Secondary Custom Score", "secondary_rating_v9_cn": "Secondary Rating", "secondary_rating_v9_en": "Secondary Rating",
+    "unlock_penalty_points": "Lock-up Penalty", "data_penalty_points": "Data Penalty", "risk_penalty_points": "Risk Penalty",
+    "kdj_k": "KDJ-K", "kdj_d": "KDJ-D", "kdj_j": "KDJ-J", "kdj_signal": "KDJ Signal", "boll_signal": "BOLL Signal", "obv_signal": "OBV Signal", "mfi14": "MFI14",
     "action_category_en": "Action Category", "action_priority_en": "Priority", "action_reason_en": "Trigger Reason", "review_reason_en": "Review Reason",
     "manual_quality_rating": "Manual Fundamental Rating", "manual_quality_score": "Manual Fundamental Score", "industry_view": "Industry View", "valuation_view": "Valuation View", "research_comment": "Research Comment", "updated_by": "Updated By", "updated_date": "Updated Date",
     "rating_bucket": "Rating Bucket", "sample_count": "Samples", "sample_pct": "Sample %", "target_range": "Target Range", "calibration_note_en": "Calibration Note",
@@ -682,12 +694,12 @@ def build_a1_quality_scores(df: pd.DataFrame, weights: dict[str, float] | None =
     out = df.copy()
     if weights is None:
         weights = {
-            "industry": 35,
-            "company": 20,
-            "sponsor": 15,
+            "industry": 25,
+            "company": 25,
             "peer": 15,
+            "sponsor": 10,
             "tradability": 10,
-            "market": 5,
+            "market": 10,
         }
     total_w = sum(float(v) for v in weights.values()) or 1
 
@@ -812,8 +824,8 @@ def build_a1_quality_scores(df: pd.DataFrame, weights: dict[str, float] | None =
     score = (
         out["a1_industry_preference_score"] * float(weights.get("industry", 0)) +
         out["a1_company_quality_score"] * float(weights.get("company", 0)) +
-        out["a1_sponsor_quality_score"] * float(weights.get("sponsor", 0)) +
         out["a1_peer_ipo_score"] * float(weights.get("peer", 0)) +
+        out["a1_sponsor_quality_score"] * float(weights.get("sponsor", 0)) +
         out["a1_tradability_score"] * float(weights.get("tradability", 0)) +
         out["a1_market_window_score"] * float(weights.get("market", 0))
     ) / total_w
@@ -1081,9 +1093,11 @@ def enrich_dynamic(df: pd.DataFrame, quotes: pd.DataFrame) -> pd.DataFrame:
             cu.append(pd.NaT); c6.append(pd.NaT); c12.append(pd.NaT)
             continue
         actual = pd.to_datetime(out.get("lockup_end_date", pd.Series(pd.NaT, index=out.index)).iloc[i], errors="coerce") if i < len(out) else pd.NaT
-        cu.append(actual if pd.notna(actual) else (d + pd.DateOffset(months=6) if (corner_amt.iloc[i] > 0 or corner_count.iloc[i] > 0) else pd.NaT))
-        c6.append(d + pd.DateOffset(months=6))
-        c12.append(d + pd.DateOffset(months=12))
+        # v9: formal scoring only uses explicit iFind / confirmed lock-up dates.
+        # Listing-date + 6/12 month estimates are not allowed into official secondary scoring.
+        cu.append(actual if pd.notna(actual) else pd.NaT)
+        c6.append(pd.NaT)
+        c12.append(pd.NaT)
     out["cornerstone_unlock_date"] = pd.to_datetime(cu)
     out["controller_first_window_date"] = pd.to_datetime(c6)
     out["controller_second_window_date"] = pd.to_datetime(c12)
@@ -1172,14 +1186,23 @@ def display_table(df: pd.DataFrame, lang: str, cols: list[str] | None = None, he
         name_text = out["name"].fillna("").astype(str)
         out["name"] = [f"{u}?tv_display={n}" if u and n else n for u, n in zip(tv_urls, name_text)]
 
+    # format date columns to day only for leadership display
+    for c in [col for col in out.columns if any(k in str(col).lower() for k in ["date", "day"]) or "日期" in str(col) or str(col).endswith("日")]:
+        try:
+            parsed = pd.to_datetime(out[c], errors="coerce")
+            if parsed.notna().mean() > 0.3:
+                out[c] = parsed.dt.strftime("%Y-%m-%d").fillna(out[c].astype(str).replace("NaT", ""))
+        except Exception:
+            pass
+
     # format selected columns
-    for c in ["d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "relative_to_issue_pct", "ret20_current", "ret60_current", "drawdown_from_quote_high"]:
+    for c in ["d1_close_ret", "max_20_ret", "min_20_ret", "max_60_ret", "min_60_ret", "max_180_ret", "min_180_ret", "relative_to_issue_pct", "ret20_current", "ret60_current", "drawdown_from_quote_high", "ret_20d", "ret_60d"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct)
     for c in ["gray_open_ret_pct", "gray_close_ret_pct", "d1_open_ret_pct", "d1_close_ret_pct", "one_lot_success_rate_pct"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct_raw)
     for c in ["首日均值", "二十日最大均值", "六十日最大均值", "一八零日最大均值", "二十日最小均值", "交易成功率", "强势或深V率", "坏路径率", "top_tradeable_20d_rate", "top_strong_or_deepv_rate", "top_bad_path_rate", "top_d1_mean", "top_max20_mean", "top_min20_mean", "sample_pct"]:
         if c in out.columns: out[c] = out[c].map(fmt_pct)
-    for c in ["overall_score", "current_stage_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score", "custom_score", "technical_score", "secondary_model_score_v8", "margin_multiple", "public_subscription_multiple", "public_subscription_multiple_ballot", "cornerstone_value_to_avg20_turnover", "last_close"]:
+    for c in ["overall_score", "current_stage_score", "primary_score", "secondary_score", "cornerstone_score", "a1_score", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score", "custom_score", "technical_score", "secondary_model_score_v8", "secondary_custom_score_v9", "unlock_penalty_points", "data_penalty_points", "risk_penalty_points", "kdj_k", "kdj_d", "kdj_j", "mfi14", "margin_multiple", "public_subscription_multiple", "public_subscription_multiple_ballot", "cornerstone_value_to_avg20_turnover", "last_close"]:
         if c in out.columns: out[c] = out[c].map(lambda x: fmt_num(x, 1))
     for c in ["cornerstone_amount_hkd", "margin_amount_hkd", "avg20_trading_value_hkd_est"]:
         if c in out.columns: out[c] = out[c].map(fmt_money)
@@ -1336,6 +1359,102 @@ def render_score_breakdown_note(lang: str):
         st.caption("Read score together with positive drivers, penalties, current action, buy trigger, sell/risk trigger and quote update time. A high score is not always an immediate buy; it can mean good name but wait for entry.")
 
 
+def stage_secondary_weights_ui(lang: str):
+    """Stage-specific editable weights shown inside the secondary trading page. They only affect the displayed v9 score."""
+    default = {
+        "0-30D": {"anchor":30, "trend":10, "volume":20, "path":20, "relative":10, "liquidity":10},
+        "31-180D": {"anchor":20, "trend":25, "volume":20, "path":10, "relative":10, "liquidity":10},
+        "180D+": {"anchor":5, "trend":30, "volume":20, "path":15, "relative":15, "liquidity":10},
+    }
+    labels = {
+        "anchor": "IPO锚点" if lang == "中文" else "IPO anchor",
+        "trend": "技术趋势" if lang == "中文" else "Technical trend",
+        "volume": "量价确认" if lang == "中文" else "Volume-price confirmation",
+        "path": "路径质量/修复" if lang == "中文" else "Path / recovery",
+        "relative": "相对强弱" if lang == "中文" else "Relative strength",
+        "liquidity": "流动性" if lang == "中文" else "Liquidity",
+    }
+    out = {}
+    with st.expander("二级评分权重设置（仅影响当前页面排序）" if lang == "中文" else "Secondary scoring weights (display ranking only)", expanded=False):
+        st.caption("不同上市阶段采用不同权重；调权重不消耗API额度，不改原始数据。" if lang == "中文" else "Different listing-age buckets use different weights. Changing weights does not consume API quota or change raw data.")
+        tabs = st.tabs(["0-30D", "31-180D", "180D+"])
+        for tab, bucket in zip(tabs, ["0-30D", "31-180D", "180D+"]):
+            with tab:
+                cols = st.columns(3)
+                out[bucket] = {}
+                for i, k in enumerate(["anchor", "trend", "volume", "path", "relative", "liquidity"]):
+                    out[bucket][k] = cols[i % 3].slider(labels[k], 0, 50, int(default[bucket][k]), key=f"w_{bucket}_{k}")
+        st.markdown("**风险扣分**：精确解禁、低流动性、行情异常、过热/滞涨、破发弱势等以扣分和评级上限方式处理。" if lang == "中文" else "**Risk penalties**: accurate lock-up, low liquidity, quote anomaly, overheating/stalling and weak break-price structures are handled as penalties and rating caps.")
+    return out
+
+
+def recalc_secondary_v9(df: pd.DataFrame, weights: dict[str, dict[str, float]]) -> pd.DataFrame:
+    out = df.copy()
+    idx = out.index
+    tech = to_num(out.get("technical_score", pd.Series(np.nan, index=idx))).fillna(to_num(out.get("secondary_model_score_v8", pd.Series(np.nan, index=idx))).fillna(50)).clip(0,100)
+    rel_issue = to_num(out.get("relative_to_issue_pct", pd.Series(np.nan, index=idx)))
+    anchor = pd.Series(50.0, index=idx)
+    anchor = anchor.where(rel_issue.isna(), np.select([rel_issue>=0.30, rel_issue>=0.10, rel_issue>=0, rel_issue>=-0.05, rel_issue<-0.05], [85,75,65,45,25], default=50))
+    ret20 = to_num(out.get("ret20_current", out.get("ret_20d", pd.Series(np.nan, index=idx)))).fillna(0)
+    ret60 = to_num(out.get("ret60_current", out.get("ret_60d", pd.Series(np.nan, index=idx)))).fillna(0)
+    relative = (50 + ret20*80 + ret60*40).clip(0,100)
+    qrows = to_num(out.get("quote_rows", pd.Series(np.nan, index=idx))).fillna(to_num(out.get("quote_rows_for_ta", pd.Series(np.nan, index=idx))).fillna(0))
+    liquidity = pd.Series(np.select([qrows>=120, qrows>=60, qrows>=20, qrows>=5, qrows<5], [90,80,65,45,20], default=50), index=idx).astype(float)
+    state = out.get("technical_state", pd.Series("", index=idx)).astype(str)
+    qpath = out.get("quant_path_label_cn", pd.Series("", index=idx)).astype(str)
+    path_score = pd.Series(50.0, index=idx)
+    path_score += np.where(qpath.str.contains("上市即强势|深V|趋势延续|长期破发修复", regex=True, na=False), 20, 0)
+    path_score -= np.where(qpath.str.contains("一路破发|升后破发|高位回撤|长期破发弱势", regex=True, na=False), 22, 0)
+    volume = pd.Series(50.0, index=idx)
+    vr = to_num(out.get("vol_ratio_20d", pd.Series(np.nan, index=idx)))
+    volume += np.where(vr>=1.5, 18, 0)
+    volume += np.where((vr<0.8) & state.str.contains("回踩|企稳", na=False), 10, 0)
+    volume -= np.where(state.str.contains("滞涨|破位", regex=True, na=False), 18, 0)
+    risk_penalty = pd.Series(0.0, index=idx)
+    lock = out.get("lockup_pressure_cn", pd.Series("", index=idx)).astype(str)
+    days_unlock = to_num(out.get("days_to_unlock", pd.Series(np.nan, index=idx)))
+    risk_penalty += np.where((lock=="高") & days_unlock.le(30), 20, 0)
+    risk_penalty += np.where((lock=="中") & days_unlock.le(90), 8, 0)
+    qstatus = out.get("quote_update_status_cn", out.get("quote_freshness_cn", pd.Series("", index=idx))).astype(str)
+    risk_penalty += np.where(qstatus.isin(["未更新","无行情","明显滞后","缺失"]), 18, 0)
+    risk_penalty += np.where(state.str.contains("过热|滞涨", regex=True, na=False), 8, 0)
+    risk_penalty += np.where(state.str.contains("高位回撤|破位|低流动性", regex=True, na=False), 12, 0)
+    buckets = out.get("listed_age_bucket_cn", pd.Series("31-180D", index=idx)).fillna("31-180D").astype(str)
+    scores=[]
+    for i in idx:
+        b = buckets.loc[i] if buckets.loc[i] in weights else "31-180D"
+        w = weights[b]
+        denom = sum(w.values()) or 1
+        raw = (anchor.loc[i]*w["anchor"] + tech.loc[i]*w["trend"] + volume.loc[i]*w["volume"] + path_score.loc[i]*w["path"] + relative.loc[i]*w["relative"] + liquidity.loc[i]*w["liquidity"])/denom
+        scores.append(max(0, min(100, raw - risk_penalty.loc[i])))
+    out["secondary_custom_score_v9"] = pd.Series(scores, index=idx).round(1)
+    out["risk_penalty_points"] = risk_penalty.round(1)
+    out["unlock_penalty_points"] = np.where((lock=="高") & days_unlock.le(30), 20, np.where((lock=="中") & days_unlock.le(90), 8, 0))
+    out["data_penalty_points"] = np.where(qstatus.isin(["未更新","无行情","明显滞后","缺失"]), 18, 0)
+    ratings=[secondary_rating(x, out.loc[i].get("lockup_pressure_cn"))[0:2] for i,x in zip(idx,out["secondary_custom_score_v9"])]
+    out["secondary_rating_v9_cn"]=[r[0] for r in ratings]
+    out["secondary_rating_v9_en"]=[r[1] for r in ratings]
+    why=[]
+    for i in idx:
+        reasons=[]
+        if risk_penalty.loc[i]>0: reasons.append(f"风险扣分{risk_penalty.loc[i]:.0f}")
+        if liquidity.loc[i]<50: reasons.append("流动性不足")
+        if tech.loc[i]<60: reasons.append("技术趋势未充分确认")
+        if anchor.loc[i]<60 and buckets.loc[i] != "180D+": reasons.append("发行价/首日锚点未站稳")
+        if not reasons: reasons.append("等待更强成交确认或回踩买点")
+        why.append("；".join(reasons[:3]))
+    out["why_not_higher_cn"] = why
+    out["why_not_higher_en"] = why
+    conf=[]
+    for i in idx:
+        if qrows.loc[i] >= 60 and qstatus.loc[i] not in ["未更新","无行情","明显滞后","缺失"]: conf.append("高")
+        elif qrows.loc[i] >= 20: conf.append("中")
+        else: conf.append("低")
+    out["score_confidence_cn"] = conf
+    out["score_confidence_en"] = [{"高":"High","中":"Medium","低":"Low"}.get(x,x) for x in conf]
+    return out
+
+
 def make_custom_scores(df: pd.DataFrame, weights: dict[str, float]) -> pd.DataFrame:
     out = df.copy()
     factor_map = {
@@ -1430,12 +1549,12 @@ def apply_manual_research_scores(df: pd.DataFrame, manual: pd.DataFrame) -> pd.D
         out.loc[has_mq, "a1_company_quality_score"] = mq[has_mq]
     if {"a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score"}.issubset(out.columns):
         out["a1_quality_score"] = (
-            to_num(out["a1_industry_preference_score"]).fillna(50) * 0.35 +
-            to_num(out["a1_company_quality_score"]).fillna(50) * 0.20 +
-            to_num(out["a1_sponsor_quality_score"]).fillna(50) * 0.15 +
+            to_num(out["a1_industry_preference_score"]).fillna(50) * 0.25 +
+            to_num(out["a1_company_quality_score"]).fillna(50) * 0.25 +
             to_num(out["a1_peer_ipo_score"]).fillna(50) * 0.15 +
+            to_num(out["a1_sponsor_quality_score"]).fillna(50) * 0.10 +
             to_num(out["a1_tradability_score"]).fillna(50) * 0.10 +
-            to_num(out["a1_market_window_score"]).fillna(50) * 0.05
+            to_num(out["a1_market_window_score"]).fillna(50) * 0.10
         ).round(1)
         # refresh user-facing buckets
         out["a1_research_priority_cn"] = out["a1_quality_score"].map(lambda x: "A 重点跟踪" if pd.notna(x) and x >= 80 else "B+ 重点研究" if pd.notna(x) and x >= 70 else "B 研究池" if pd.notna(x) and x >= 60 else "C 观察" if pd.notna(x) and x >= 50 else "D 低优先级")
@@ -1697,8 +1816,11 @@ pool = apply_manual_research_scores(pool, manual_research)
 # Sidebar
 lang = st.sidebar.radio("语言 / Language", ["中文", "English"], horizontal=True)
 T = TEXT[lang]
-page_labels = list(T["pages"].values())
-page_key_by_label = {v: k for k, v in T["pages"].items()}
+# v9: leadership-facing navigation. A1 and IPO participation are merged into one primary-market workspace;
+# lock-up is no longer a standalone score page and manual research input is embedded in the primary workspace.
+VISIBLE_PAGE_KEYS = ["actions", "dashboard", "a1", "post", "memo", "weights", "backtest", "review", "update", "quality"]
+page_labels = [T["pages"][k] for k in VISIBLE_PAGE_KEYS]
+page_key_by_label = {T["pages"][k]: k for k in VISIBLE_PAGE_KEYS}
 page_label = st.sidebar.selectbox("页面 / Page", page_labels)
 page = page_key_by_label[page_label]
 
@@ -1841,92 +1963,69 @@ elif page == "dashboard":
 elif page == "a1":
     st.subheader(T["pages"]["a1"])
     if lang == "中文":
-        st.info("A1项目观察池只保留尚未上市公司；评分衡量未来IPO是否值得重点参与，申请状态只作为项目管理信息，不进入项目质量分。")
+        st.info("本工作区把 A1/递表项目、招股中/待上市项目和已上市公司的历史IPO评分回看放在一起。A1和招股期仍是两套评分：A1解决是否提前研究和准备额度，招股期解决是否实际参与一级市场。")
     else:
-        st.info("The A1 watchlist only includes unlisted companies. The score measures future IPO participation potential; filing status is project-management information and is not part of project quality.")
-
+        st.info("This workspace combines A1/filing projects, active IPO/deal-term names and historical IPO-score review. A1 and IPO participation remain separate models: A1 is early participation preparation; IPO score is actual primary-market action.")
     render_a1_scoring_rules(lang, expanded=False)
+    render_ipo_scoring_rules(lang, expanded=False)
+
     a1_company, a1_history = build_a1_company_view(view)
-    if a1_company.empty:
-        st.info(tr(lang, "empty"))
-    else:
-        show_all_lapsed = st.checkbox("显示长期失效历史项目" if lang == "中文" else "Show long-lapsed historical projects", value=False)
-        latest_dt = pd.to_datetime(a1_company.get("latest_application_date_calc"), errors="coerce")
-        status_ser0 = a1_company.get("application_status", pd.Series("", index=a1_company.index)).astype(str)
-        long_lapsed_mask = status_ser0.map(status_is_lapsed) & latest_dt.notna() & (latest_dt < pd.Timestamp.today().normalize() - pd.DateOffset(months=24))
-        hidden_count = int(long_lapsed_mask.sum())
-        if not show_all_lapsed:
-            a1_company = a1_company[~long_lapsed_mask].copy()
-            if hidden_count:
-                st.caption((f"已默认隐藏 {hidden_count} 个长期失效历史项目；勾选上方选项可查看全部。" if lang == "中文" else f"{hidden_count} long-lapsed historical projects are hidden by default; tick above to show all."))
-        tab_all, tab_active, tab_lapsed, tab_multi = st.tabs(["全部未上市项目" if lang == "中文" else "All Unlisted", "活跃申请" if lang == "中文" else "Active Filings", "失效观察" if lang == "中文" else "Lapsed Watch", "多次递表" if lang == "中文" else "Multiple Filings"])
-        status_ser = a1_company.get("application_status", pd.Series("", index=a1_company.index)).astype(str)
-        lapsed_mask = status_ser.map(status_is_lapsed)
-        active_mask = ~lapsed_mask
-        multi_mask = to_num(a1_company.get("filing_count", pd.Series(1, index=a1_company.index))).fillna(1) >= 2
-        base_cols = [
-            "a1_research_priority_cn" if lang == "中文" else "a1_research_priority_en",
-            "future_ipo_participation_cn" if lang == "中文" else "future_ipo_participation_en",
-            "current_investment_status_cn" if lang == "中文" else "current_investment_status_en",
-            "temp_code", "code", "name", "application_status", "filing_count", "latest_application_date_calc", "first_application_date_calc",
-            "status_note_cn" if lang == "中文" else "status_note_en",
-            "score_confidence_cn" if lang == "中文" else "score_confidence_en", "date_check_cn" if lang == "中文" else "date_check_en",
-            "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_sponsor_quality_score", "a1_peer_ipo_score", "a1_tradability_score", "a1_market_window_score",
-            "industry_level_1", "sponsor", "overall_coordinator", "next_action_cn" if lang == "中文" else "next_action_en"
-        ]
-        with tab_all:
-            display_table(a1_company.sort_values("a1_quality_score", ascending=False, na_position="last"), lang, base_cols, 580)
-        with tab_active:
-            display_table(a1_company[active_mask].sort_values("a1_quality_score", ascending=False, na_position="last"), lang, base_cols, 580)
-        with tab_lapsed:
-            display_table(a1_company[lapsed_mask].sort_values("a1_quality_score", ascending=False, na_position="last"), lang, base_cols, 580)
-        with tab_multi:
-            display_table(a1_company[multi_mask].sort_values("a1_quality_score", ascending=False, na_position="last"), lang, base_cols, 580)
+    unlisted = a1_company.copy()
+    term_mask = pd.Series(False, index=unlisted.index) if unlisted.empty else (to_num(unlisted.get("issue_price", pd.Series(np.nan, index=unlisted.index))).notna() | to_num(unlisted.get("offer_price_high", pd.Series(np.nan, index=unlisted.index))).notna())
+    listed_hist = view[is_listed_mask(view)].copy() if not view.empty else pd.DataFrame()
+    if not listed_hist.empty:
+        listed_hist = add_tradingview_links(add_listing_age_and_path(listed_hist))
+        listed_hist["ipo_review_note_cn"] = "历史评分回看：仅用于验证当时一级判断，不代表当前二级买卖"
+        listed_hist["ipo_review_note_en"] = "Historical score review only; not a current secondary trading signal"
 
-        st.markdown("### " + ("单个项目评分拆解与申请记录" if lang == "中文" else "Single-project Score Breakdown & Filing History"))
-        options = (a1_company.get("name", pd.Series("", index=a1_company.index)).astype(str) + " | " + a1_company.get("temp_code", pd.Series("", index=a1_company.index)).astype(str)).tolist()
-        selected_a1 = st.selectbox("选择项目" if lang == "中文" else "Select project", options)
-        if selected_a1:
-            sel_name = selected_a1.split(" | ")[0]
-            row = a1_company[a1_company["name"].astype(str) == sel_name].iloc[0]
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("A1项目质量分" if lang == "中文" else "A1 Quality Score", fmt_num(row.get("a1_quality_score"), 1))
-            m2.metric("研究优先级" if lang == "中文" else "Research Priority", row.get("a1_research_priority_cn" if lang == "中文" else "a1_research_priority_en", ""))
-            m3.metric("未来参与倾向" if lang == "中文" else "Future Participation Bias", row.get("future_ipo_participation_cn" if lang == "中文" else "future_ipo_participation_en", ""))
-            m4.metric("递表次数" if lang == "中文" else "Filing Count", int(row.get("filing_count", 1)) if pd.notna(row.get("filing_count")) else 1)
-            breakdown = pd.DataFrame({
-                ("维度" if lang == "中文" else "Dimension"): [
-                    "行业与港股市场偏好" if lang == "中文" else "Sector & HK Market Preference",
-                    "公司稀缺性与基本面潜力" if lang == "中文" else "Scarcity & Fundamental Potential",
-                    "保荐人/中介质量" if lang == "中文" else "Sponsor / Intermediary Quality",
-                    "历史同类IPO表现" if lang == "中文" else "Comparable IPO Performance",
-                    "未来交易可做性" if lang == "中文" else "Future Tradability",
-                    "当前市场窗口" if lang == "中文" else "Current Market Window",
-                ],
-                ("默认权重" if lang == "中文" else "Default Weight"): ["35%", "20%", "15%", "15%", "10%", "5%"],
-                ("得分" if lang == "中文" else "Score"): [
-                    fmt_num(row.get("a1_industry_preference_score"), 1), fmt_num(row.get("a1_company_quality_score"), 1), fmt_num(row.get("a1_sponsor_quality_score"), 1),
-                    fmt_num(row.get("a1_peer_ipo_score"), 1), fmt_num(row.get("a1_tradability_score"), 1), fmt_num(row.get("a1_market_window_score"), 1),
-                ]
-            })
-            st.dataframe(breakdown, use_container_width=True, hide_index=True)
-            cadd, csub = st.columns(2)
-            with cadd:
-                st.write("加分原因" if lang == "中文" else "Positive Reasons")
-                st.success(row.get("a1_positive_reasons_cn" if lang == "中文" else "a1_positive_reasons_en", ""))
-            with csub:
-                st.write("扣分/不确定性" if lang == "中文" else "Negative / Uncertain Factors")
-                st.warning(row.get("a1_negative_reasons_cn" if lang == "中文" else "a1_negative_reasons_en", ""))
-            st.write(("状态提示：" if lang == "中文" else "Status note: ") + str(row.get("status_note_cn" if lang == "中文" else "status_note_en", "")))
-            st.write(("下一动作：" if lang == "中文" else "Next action: ") + str(row.get("next_action_cn" if lang == "中文" else "next_action_en", "")))
-            key = row.get("company_key")
-            hist = a1_history[a1_history["company_key"] == key].copy() if "company_key" in a1_history.columns else pd.DataFrame()
-            with st.expander("查看完整申请记录" if lang == "中文" else "View full filing history", expanded=False):
-                hcols = ["temp_code", "code", "name", "application_date", "application_status", "status_update_date", "hearing_date", "sponsor", "overall_coordinator"]
-                display_table(hist.sort_values("application_date_dt", ascending=False, na_position="last"), lang, hcols, 260)
-
-    render_score_breakdown_note(lang)
-
+    tab_a1, tab_terms, tab_hist, tab_manual, tab_rules = st.tabs([
+        "当前未上市项目" if lang == "中文" else "Current Unlisted Projects",
+        "招股中 / 待上市" if lang == "中文" else "Offering / Pending Listing",
+        "历史IPO评分回看" if lang == "中文" else "Historical IPO Score Review",
+        "人工研究调整" if lang == "中文" else "Manual Research Adjustment",
+        "评分规则与权重" if lang == "中文" else "Rules & Weights",
+    ])
+    with tab_a1:
+        base = unlisted[~term_mask].copy() if not unlisted.empty else pd.DataFrame()
+        if not base.empty:
+            show_all_lapsed = st.checkbox("显示长期失效历史项目" if lang == "中文" else "Show long-lapsed historical projects", value=False)
+            latest_dt = pd.to_datetime(base.get("latest_application_date_calc"), errors="coerce")
+            status_ser0 = base.get("application_status", pd.Series("", index=base.index)).astype(str)
+            long_lapsed_mask = status_ser0.map(status_is_lapsed) & latest_dt.notna() & (latest_dt < pd.Timestamp.today().normalize() - pd.DateOffset(months=24))
+            if not show_all_lapsed:
+                hidden_count = int(long_lapsed_mask.sum())
+                base = base[~long_lapsed_mask].copy()
+                if hidden_count:
+                    st.caption(f"已默认隐藏 {hidden_count} 个长期失效项目。" if lang == "中文" else f"{hidden_count} long-lapsed projects hidden by default.")
+        cols = ["a1_research_priority_cn" if lang == "中文" else "a1_research_priority_en", "future_ipo_participation_cn" if lang == "中文" else "future_ipo_participation_en", "temp_code", "code", "name", "application_status", "filing_count", "latest_application_date_calc", "first_application_date_calc", "industry_level_1", "sponsor", "a1_quality_score", "a1_industry_preference_score", "a1_company_quality_score", "a1_peer_ipo_score", "a1_sponsor_quality_score", "a1_tradability_score", "a1_market_window_score", "manual_quality_score", "research_comment", "a1_positive_reasons_cn" if lang == "中文" else "a1_positive_reasons_en", "a1_negative_reasons_cn" if lang == "中文" else "a1_negative_reasons_en", "next_action_cn" if lang == "中文" else "next_action_en"]
+        display_table(base.sort_values("a1_quality_score", ascending=False, na_position="last") if not base.empty else base, lang, cols, 620)
+    with tab_terms:
+        cur = unlisted[term_mask].copy() if not unlisted.empty else pd.DataFrame()
+        if lang == "中文":
+            st.caption("这里使用招股期参与决策分；可使用发行价、定价区间、认购、孖展、基石、中签等已经披露的数据。")
+        else:
+            st.caption("This tab uses IPO participation score and can use disclosed offer price/range, subscription, margin, cornerstone and allocation data.")
+        rec_col = "primary_recommendation"
+        cols = ["code", "name", "listing_date", "industry_level_1", "issue_price", "offer_price_low", "offer_price_high", "public_subscription_multiple", "margin_multiple", "one_lot_success_rate_pct", "cornerstone_count", "cornerstone_amount_hkd", "primary_score", rec_col, "a1_quality_score", "top_underwriters", "top_bookrunners"]
+        display_table(cur.sort_values("primary_score", ascending=False, na_position="last") if not cur.empty else cur, lang, cols, 560)
+    with tab_hist:
+        if lang == "中文":
+            st.caption("已上市公司的历史IPO评分放在这里复盘，不进入当前二级交易评分。")
+        else:
+            st.caption("Historical IPO scores of listed companies are reviewed here and do not enter current secondary trading score.")
+        cols = ["code", "name", "listing_date", "industry_level_1", "issue_price", "a1_quality_score", "primary_score", "d1_close_ret", "max_20_ret", "max_60_ret", "min_60_ret", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "ipo_review_note_cn" if lang == "中文" else "ipo_review_note_en"]
+        display_table(listed_hist.sort_values("listing_date", ascending=False, na_position="last") if not listed_hist.empty else listed_hist, lang, cols, 620)
+    with tab_manual:
+        st.caption("人工研究调整直接嵌入一级市场界面，影响A1公司稀缺性/基本面维度；建议每次修改后下载CSV并覆盖 deploy_data/manual_research_scores.csv。" if lang == "中文" else "Manual research adjustment is embedded here and feeds A1 fundamental/scarcity dimension. Download and replace deploy_data/manual_research_scores.csv after editing.")
+        manual_cols = ["code", "name", "manual_quality_rating", "manual_quality_score", "industry_view", "valuation_view", "research_comment", "updated_by", "updated_date"]
+        manual_existing = read_csv_any(BASE / "manual_research_scores.csv")
+        if manual_existing.empty:
+            manual_existing = pd.DataFrame(columns=manual_cols)
+        edited = st.data_editor(manual_existing[manual_cols if set(manual_cols).issubset(manual_existing.columns) else manual_existing.columns], num_rows="dynamic", use_container_width=True, height=420)
+        st.download_button("下载人工研究评分CSV" if lang == "中文" else "Download manual research CSV", edited.to_csv(index=False, encoding="utf-8-sig"), "manual_research_scores.csv", "text/csv")
+    with tab_rules:
+        render_a1_scoring_rules(lang, expanded=True)
+        render_ipo_scoring_rules(lang, expanded=True)
 elif page == "ipo":
     st.subheader(T["pages"]["ipo"])
     ipo_all = view[view.get("issue_price", pd.Series(np.nan, index=view.index)).notna() | view.get("offer_price_high", pd.Series(np.nan, index=view.index)).notna()].copy()
@@ -1984,11 +2083,15 @@ elif page == "gray":
 elif page == "post":
     st.subheader(T["pages"]["post"])
     if lang == "中文":
-        st.info("本页覆盖所有2024年后上市公司，不仅限于180日内。0-180日重点看发行价关系、深V和升后破发；180日后重点看趋势延续、长期破发修复、解禁后再定价和高位回撤。")
+        st.info("本页只显示已上市公司的当前二级交易评分，不显示历史IPO评分。评分按0-30D、31-180D、180D+三套规则分层：0-30D重首日/首周锚点，31-180D重趋势与深V/破发修复，180D+重中期趋势、资金承接和再定价。")
     else:
         st.info("This page covers all companies listed since 2024, not only the first 180 days. For 0-180D it focuses on issue-price relationship, deep-V and pump-then-break; after 180D it focuses on trend continuation, long break-price recovery, post-lock-up repricing and high-level drawdown.")
     render_secondary_scoring_rules(lang, expanded=True)
+    sec_weights = stage_secondary_weights_ui(lang)
     post = build_secondary_view(view, quotes)
+    if not post.empty:
+        post = recalc_secondary_v9(post, sec_weights)
+        post["current_stage_score"] = post["secondary_custom_score_v9"].combine_first(post.get("current_stage_score"))
     bucket_options = sorted(post.get("listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", pd.Series(dtype=str)).dropna().unique()) if not post.empty else []
     selected_buckets = st.multiselect("上市分层" if lang == "中文" else "Listing-age bucket", bucket_options, default=bucket_options)
     if selected_buckets:
@@ -1999,7 +2102,7 @@ elif page == "post":
         post = post[post[post_rating_col].astype(str).isin(tiers)]
     if "current_stage_score" in post.columns:
         post = post[to_num(post["current_stage_score"]).fillna(0) >= min_score]
-    cols = ["secondary_rating_cn" if lang == "中文" else "secondary_rating_en", "code", "name", "listing_date", "listed_days", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "issue_price", "last_close", "relative_to_issue_pct", "technical_state", "technical_score", "quote_source", "last_quote_date", "quote_update_status_cn" if lang == "中文" else "quote_update_status_en", "quote_update_reason_cn" if lang == "中文" else "quote_update_reason_en", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "ret20_current", "ret60_current", "drawdown_from_quote_high", "secondary_model_score_v8", "current_stage_score", "secondary_score_explain_cn" if lang == "中文" else "secondary_score_explain_en", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "buy_trigger", "sell_trigger", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "next_unlock_date", "days_to_unlock"]
+    cols = ["secondary_rating_v9_cn" if lang == "中文" else "secondary_rating_v9_en", "score_confidence_cn" if lang == "中文" else "score_confidence_en", "code", "name", "listing_date", "listed_days", "listed_age_bucket_cn" if lang == "中文" else "listed_age_bucket_en", "issue_price", "last_close", "relative_to_issue_pct", "technical_state", "technical_score", "secondary_custom_score_v9", "risk_penalty_points", "why_not_higher_cn" if lang == "中文" else "why_not_higher_en", "kdj_k", "kdj_d", "kdj_j", "kdj_signal", "boll_signal", "mfi14", "quote_source", "last_quote_date", "quote_update_status_cn" if lang == "中文" else "quote_update_status_en", "quote_update_reason_cn" if lang == "中文" else "quote_update_reason_en", "quant_path_label_cn" if lang == "中文" else "quant_path_label_en", "ret20_current", "ret60_current", "drawdown_from_quote_high", "secondary_action_cn" if lang == "中文" else "secondary_action_en", "buy_trigger", "sell_trigger", "lockup_pressure_cn" if lang == "中文" else "lockup_pressure_en", "next_unlock_date", "days_to_unlock", "unlock_penalty_points"]
     display_table(post.sort_values("current_stage_score", ascending=False, na_position="last"), lang, cols, 680)
     with st.expander("量化路径定义" if lang == "中文" else "Quantitative Path Definitions", expanded=True):
         if lang == "中文":

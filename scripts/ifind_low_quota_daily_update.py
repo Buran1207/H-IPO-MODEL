@@ -24,6 +24,7 @@ import re
 import subprocess
 import sys
 import traceback
+from io import StringIO
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -299,6 +300,121 @@ def update_dr_args_for_window(args: tuple[Any, ...], start_yyyymmdd: str, end_yy
     return (args[0], param, *args[2:])
 
 
+def _listlike_to_df(data: Any, columns: list[str] | None = None) -> pd.DataFrame:
+    if data is None:
+        return pd.DataFrame()
+    if isinstance(data, pd.DataFrame):
+        return data
+    if isinstance(data, dict):
+        return pd.DataFrame(data)
+    if isinstance(data, str):
+        text = data.strip()
+        if not text:
+            return pd.DataFrame()
+        for sep in [",", "\t", "|"]:
+            try:
+                df = pd.read_csv(StringIO(text), sep=sep)
+                if df.shape[1] > 1:
+                    return df
+            except Exception:
+                pass
+        return pd.DataFrame({"value": [text]})
+    try:
+        df = pd.DataFrame(data)
+        if columns and len(columns) == df.shape[1]:
+            df.columns = columns
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+def _parse_ths_object(res: Any) -> pd.DataFrame:
+    """Robust parser for iFinDPy.THSData.
+
+    iFind functions are inconsistent across THS_DR/HQ/RQ/BD and versions: `.data` may be
+    a DataFrame, list, dict, matrix or empty while useful arrays live in other attributes.
+    This parser tries common attribute names and falls back to an attribute dump rather than
+    treating a valid THSData object as failure.
+    """
+    if isinstance(res, pd.DataFrame):
+        return res
+    if isinstance(res, dict):
+        data = res.get("data", res)
+        return _listlike_to_df(data)
+
+    # Common data payloads.
+    data = getattr(res, "data", None)
+    cols = None
+    for attr in ["fields", "indicators", "indicator", "columns", "col_name", "headers"]:
+        v = getattr(res, attr, None)
+        if v is not None:
+            try:
+                cols = list(v)
+                break
+            except Exception:
+                pass
+    df = _listlike_to_df(data, cols)
+    if not df.empty:
+        return df
+
+    # Some THSData objects store tabular payload in `.tables` or `.table`.
+    for attr in ["tables", "table", "Data", "dataset", "result"]:
+        v = getattr(res, attr, None)
+        df = _listlike_to_df(v, cols)
+        if not df.empty:
+            return df
+
+    # Try reconstructing from code/time/indicator vectors if present.
+    code_vec = None
+    for attr in ["codes", "thscode", "thsCode", "code", "securityCode"]:
+        v = getattr(res, attr, None)
+        if v is not None:
+            try:
+                code_vec = list(v) if not isinstance(v, str) else [v]
+                break
+            except Exception:
+                pass
+    time_vec = None
+    for attr in ["time", "times", "date", "dates"]:
+        v = getattr(res, attr, None)
+        if v is not None:
+            try:
+                time_vec = list(v) if not isinstance(v, str) else [v]
+                break
+            except Exception:
+                pass
+    if data is not None:
+        try:
+            arr = pd.DataFrame(data)
+            if not arr.empty:
+                if cols and len(cols) == arr.shape[1]:
+                    arr.columns = cols
+                if code_vec and len(code_vec) == len(arr):
+                    arr.insert(0, "thscode", code_vec)
+                if time_vec and len(time_vec) == len(arr):
+                    arr.insert(0, "time", time_vec)
+                return arr
+        except Exception:
+            pass
+
+    # Last resort: expose scalar/list attributes for debugging instead of failing hard.
+    attrs = {}
+    for k in dir(res):
+        if k.startswith("_") or k in {"data"}:
+            continue
+        try:
+            v = getattr(res, k)
+            if callable(v):
+                continue
+            if isinstance(v, (str, int, float, bool, list, tuple)):
+                attrs[k] = str(v)[:500]
+        except Exception:
+            continue
+    if attrs:
+        return pd.DataFrame([attrs])
+    return pd.DataFrame()
+
+
 def call_ifind(ctx: RunContext, ifind: Any, func: str, args: tuple[Any, ...]) -> pd.DataFrame:
     if ctx.dry_run:
         return pd.DataFrame()
@@ -306,23 +422,18 @@ def call_ifind(ctx: RunContext, ifind: Any, func: str, args: tuple[Any, ...]) ->
     if f is None:
         raise RuntimeError(f"iFind 模块中找不到 {func}")
     res = f(*args)
-    # iFinD 常见返回对象有 data 属性，也可能直接返回 DataFrame
-    if isinstance(res, pd.DataFrame):
-        return clean_frame(res)
-    if hasattr(res, "data"):
-        data = getattr(res, "data")
-        if isinstance(data, pd.DataFrame):
-            return clean_frame(data)
-    if isinstance(res, dict) and "data" in res:
-        data = res["data"]
-        if isinstance(data, pd.DataFrame):
-            return clean_frame(data)
-        return clean_frame(pd.DataFrame(data))
-    # 最后尝试构造 DataFrame
-    try:
-        return clean_frame(pd.DataFrame(res))
-    except Exception as exc:
-        raise RuntimeError(f"无法解析 iFind 返回结果：{type(res)}") from exc
+    df = _parse_ths_object(res)
+    if df is None or df.empty:
+        # include error fields if iFind returned them
+        err = []
+        for attr in ["errorcode", "errcode", "errmsg", "message"]:
+            try:
+                if hasattr(res, attr):
+                    err.append(f"{attr}={getattr(res, attr)}")
+            except Exception:
+                pass
+        raise RuntimeError(f"iFind返回空表或无法解析：{type(res)} {'; '.join(err)}")
+    return clean_frame(df)
 
 
 def merge_cache(old: pd.DataFrame, new: pd.DataFrame, policy: str) -> pd.DataFrame:

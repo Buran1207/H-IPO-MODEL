@@ -3,9 +3,10 @@ from __future__ import annotations
 """计算港股 IPO/上市后交易池专业技术指标和交易触发条件。
 
 输入优先级：
-1. deploy_data/ipo_daily_quotes_180d.csv 旧免费行情标准表
-2. deploy_data/ifind_daily_quotes_raw.csv iFind THS_HQ 原始表
-3. data/raw_ifind/daily_quotes.csv iFind 缓存表
+1. deploy_data/ifind_daily_quotes_raw.csv iFind THS_HQ 原始表
+2. data/raw_ifind/daily_quotes.csv iFind 缓存表
+3. deploy_data/ipo_daily_quotes_180d.csv 旧免费行情标准表（仅兜底，不作为主评分优先源）
+4. deploy_data/ifind_close_snapshot_raw.csv 当日快照，用于临时补充当日日K
 
 输出：
 - deploy_data/ipo_technical_signals.csv
@@ -124,6 +125,24 @@ def compute_one(g: pd.DataFrame) -> dict:
     boll_std = g["close"].rolling(20, min_periods=10).std()
     g["boll_upper"] = g["boll_mid"] + 2 * boll_std
     g["boll_lower"] = g["boll_mid"] - 2 * boll_std
+    # KDJ: short-term momentum and reversal confirmation.
+    low9 = g["low"].rolling(9, min_periods=5).min()
+    high9 = g["high"].rolling(9, min_periods=5).max()
+    rsv = (g["close"] - low9) / (high9 - low9).replace(0, np.nan) * 100
+    g["kdj_k"] = rsv.ewm(alpha=1/3, adjust=False).mean()
+    g["kdj_d"] = g["kdj_k"].ewm(alpha=1/3, adjust=False).mean()
+    g["kdj_j"] = 3 * g["kdj_k"] - 2 * g["kdj_d"]
+
+    # OBV and MFI: money-flow confirmation / divergence.
+    direction = np.sign(g["close"].diff()).fillna(0)
+    g["obv"] = (direction * g["volume"].fillna(0)).cumsum()
+    typical = (g["high"] + g["low"] + g["close"]) / 3
+    raw_money = typical * g["volume"].fillna(0)
+    pos_flow = raw_money.where(typical.diff() > 0, 0).rolling(14, min_periods=5).sum()
+    neg_flow = raw_money.where(typical.diff() < 0, 0).rolling(14, min_periods=5).sum().abs()
+    money_ratio = pos_flow / neg_flow.replace(0, np.nan)
+    g["mfi14"] = 100 - 100/(1 + money_ratio)
+
     prev_close = g["close"].shift(1)
     tr = pd.concat([(g["high"] - g["low"]).abs(), (g["high"] - prev_close).abs(), (g["low"] - prev_close).abs()], axis=1).max(axis=1)
     g["atr14"] = tr.rolling(14, min_periods=5).mean()
@@ -147,6 +166,35 @@ def compute_one(g: pd.DataFrame) -> dict:
     dd = val(row.get("drawdown_from_high"))
     macd_hist = val(row.get("macd_hist"))
     prev_hist = val(g["macd_hist"].iloc[-2]) if len(g) >= 2 else np.nan
+    kdj_k, kdj_d, kdj_j = val(row.get("kdj_k")), val(row.get("kdj_d")), val(row.get("kdj_j"))
+    prev_k, prev_d = (val(g["kdj_k"].iloc[-2]), val(g["kdj_d"].iloc[-2])) if len(g) >= 2 else (np.nan, np.nan)
+    mfi14 = val(row.get("mfi14"))
+    boll_upper, boll_mid, boll_lower = val(row.get("boll_upper")), val(row.get("boll_mid")), val(row.get("boll_lower"))
+    obv = val(row.get("obv"))
+    obv20 = val(g["obv"].rolling(20, min_periods=5).mean().iloc[-1]) if "obv" in g else np.nan
+    kdj_signal = "中性"
+    if not math.isnan(prev_k) and not math.isnan(prev_d) and not math.isnan(kdj_k) and not math.isnan(kdj_d):
+        if prev_k < prev_d and kdj_k >= kdj_d and kdj_k < 60:
+            kdj_signal = "KDJ金叉修复"
+        elif prev_k > prev_d and kdj_k <= kdj_d and kdj_k > 60:
+            kdj_signal = "KDJ高位死叉"
+        elif kdj_k >= 80 and kdj_d >= 80:
+            kdj_signal = "KDJ高位钝化"
+        elif kdj_k <= 30 and kdj_d <= 30:
+            kdj_signal = "KDJ低位观察"
+    boll_signal = "中性"
+    if not math.isnan(close) and not math.isnan(boll_upper) and not math.isnan(boll_mid) and not math.isnan(boll_lower):
+        if close > boll_upper:
+            boll_signal = "BOLL上轨突破"
+        elif close > boll_mid:
+            boll_signal = "BOLL中轨上方"
+        elif close < boll_lower:
+            boll_signal = "BOLL下轨弱势/反弹观察"
+        elif close < boll_mid:
+            boll_signal = "BOLL中轨下方"
+    obv_signal = "中性"
+    if not math.isnan(obv) and not math.isnan(obv20):
+        obv_signal = "OBV资金确认" if obv >= obv20 else "OBV未确认"
     # 技术状态：优先做风险，再做机会。
     status = "中性震荡"
     buy_trigger = "等待价格/成交确认"
@@ -180,6 +228,20 @@ def compute_one(g: pd.DataFrame) -> dict:
             sell_trigger = "放量滞涨或跌回5日线下方，优先止盈"
     if not math.isnan(macd_hist) and not math.isnan(prev_hist) and prev_hist < 0 <= macd_hist and close > ma20:
         tech_score += 5
+    if kdj_signal == "KDJ金叉修复":
+        tech_score += 5
+    elif kdj_signal in ["KDJ高位死叉"]:
+        tech_score -= 6
+    if boll_signal == "BOLL上轨突破" and not math.isnan(vr20) and vr20 >= 1.3:
+        tech_score += 5
+    elif boll_signal == "BOLL中轨下方":
+        tech_score -= 4
+    if obv_signal == "OBV资金确认" and close > ma20:
+        tech_score += 4
+    if not math.isnan(mfi14) and mfi14 >= 80:
+        tech_score -= 5
+    elif not math.isnan(mfi14) and mfi14 <= 20 and close >= ma20:
+        tech_score += 3
     if not math.isnan(vr20) and vr20 >= 1.5 and close > ma20:
         tech_score += 5
     if not math.isnan(rsi14) and rsi14 >= 80:
@@ -210,6 +272,14 @@ def compute_one(g: pd.DataFrame) -> dict:
         "boll_upper": val(row.get("boll_upper")),
         "boll_mid": val(row.get("boll_mid")),
         "boll_lower": val(row.get("boll_lower")),
+        "kdj_k": kdj_k,
+        "kdj_d": kdj_d,
+        "kdj_j": kdj_j,
+        "kdj_signal": kdj_signal,
+        "boll_signal": boll_signal,
+        "obv": obv,
+        "obv_signal": obv_signal,
+        "mfi14": mfi14,
         "atr14": val(row.get("atr14")),
         "ret_20d": ret20,
         "ret_60d": ret60,
@@ -224,16 +294,22 @@ def compute_one(g: pd.DataFrame) -> dict:
 
 
 def build() -> pd.DataFrame:
+    # v9: iFind is the primary source. Free/Yahoo/Stooq historical file is only a fallback.
     sources = [
-        DEPLOY / "ipo_daily_quotes_180d.csv",
         DEPLOY / "ifind_daily_quotes_raw.csv",
         RAW / "daily_quotes.csv",
+        DEPLOY / "ipo_daily_quotes_180d.csv",
     ]
     q = pd.DataFrame()
     for p in sources:
         q = normalize_quotes(read_csv_smart(p))
         if not q.empty:
             break
+    # Add same-day iFind snapshot as a temporary daily bar if THS_HQ has not yet written today's daily K.
+    snap = normalize_quotes(read_csv_smart(DEPLOY / "ifind_close_snapshot_raw.csv"))
+    if not snap.empty:
+        q = pd.concat([q, snap], ignore_index=True) if not q.empty else snap
+        q = q.sort_values(["code", "date"]).drop_duplicates(["code", "date"], keep="last")
     if q.empty:
         return pd.DataFrame(columns=["code","technical_score","technical_state","buy_trigger","sell_trigger"])
     rows = [compute_one(g) for _, g in q.groupby("code", sort=False) if len(g.dropna(subset=["close"])) >= 3]
